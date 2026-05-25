@@ -3059,6 +3059,111 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
+// ---------- Analysis warm-up (shared between Actions + PPR) ----------
+
+// Auto-fires on first Actions/PPR visit if some tracked epics lack analysis
+// in cache. Polls every 5s and refreshes the active tab as each finishes.
+const warmupState = {
+  polling: false,
+  refreshCallbacks: new Set(),  // functions to call when state changes
+};
+
+async function fetchWarmupStatus() {
+  try {
+    const resp = await fetch("/api/analyze-missing/status");
+    if (!resp.ok) return null;
+    return await resp.json();
+  } catch { return null; }
+}
+
+async function ensureWarmupStarted() {
+  // If anything is missing and nothing's in progress, trigger.
+  const s = await fetchWarmupStatus();
+  if (!s) return null;
+  if (s.in_progress) {
+    startWarmupPolling();
+    return s;
+  }
+  if ((s.missing || []).length === 0) return s;
+  // Auth required - if anon, silently skip (user can't trigger anyway)
+  if (!statusState.authenticated) return s;
+  try {
+    await fetch("/api/analyze-missing", { method: "POST" });
+  } catch {}
+  startWarmupPolling();
+  return s;
+}
+
+function startWarmupPolling() {
+  if (warmupState.polling) return;
+  warmupState.polling = true;
+  const tick = async () => {
+    const s = await fetchWarmupStatus();
+    if (!s) {
+      warmupState.polling = false;
+      return;
+    }
+    renderWarmupBanner(s);
+    // Fire any registered tab-refresh handlers each tick so card chips +
+    // group lists pick up newly-analyzed epics as they land.
+    warmupState.refreshCallbacks.forEach((fn) => { try { fn(); } catch {} });
+    if (s.in_progress) {
+      setTimeout(tick, 5000);
+    } else {
+      warmupState.polling = false;
+      // One last refresh after completion
+      warmupState.refreshCallbacks.forEach((fn) => { try { fn(); } catch {} });
+    }
+  };
+  tick();
+}
+
+function renderWarmupBanner(status) {
+  // Banner hosts live inside each tab's main; both render so it shows up
+  // immediately when the user switches tabs.
+  document.querySelectorAll(".warmup-banner-host").forEach((host) => {
+    renderWarmupBannerInto(host, status);
+  });
+}
+
+function renderWarmupBannerInto(host, status) {
+  if (!host) return;
+  const pending = (status.pending || []).length;
+  const missing = (status.missing || []).length;
+  const total = status.total_tracked || 0;
+  if (!status.in_progress && missing === 0) {
+    host.innerHTML = "";
+    return;
+  }
+  if (status.in_progress) {
+    const done = total - missing;
+    host.innerHTML = `
+      <div class="refresh-banner warmup">
+        <span class="refresh-banner-text">
+          <span class="spinner"></span>
+          Analyzing projects: ${escapeHtml(String(done))}/${escapeHtml(String(total))} ready (${escapeHtml(String(pending))} in flight)
+        </span>
+      </div>
+    `;
+  } else if (missing > 0) {
+    host.innerHTML = `
+      <div class="refresh-banner warmup">
+        <span class="refresh-banner-text">${escapeHtml(String(missing))} project${missing === 1 ? "" : "s"} not yet analyzed.</span>
+        <div class="refresh-banner-actions">
+          <button type="button" data-action="trigger-warmup">Analyze now</button>
+        </div>
+      </div>
+    `;
+  }
+}
+
+async function triggerWarmupManually() {
+  if (!statusState.authenticated) return;
+  await fetch("/api/analyze-missing", { method: "POST" }).catch(() => {});
+  startWarmupPolling();
+}
+
+
 // ---------- Actions tab ----------
 
 const actionsState = {
@@ -3079,6 +3184,10 @@ async function loadActions() {
   } catch (e) {
     $("actions-list").innerHTML = `<p class="status error">failed to load: ${escapeHtml(e.message)}</p>`;
   }
+  // Auto-warm the cache so all tracked epics' actions show up over the next
+  // few minutes; register a callback so we re-render as each completes.
+  warmupState.refreshCallbacks.add(loadActions);
+  ensureWarmupStarted();
 }
 
 function renderActionsTab() {
@@ -3214,6 +3323,16 @@ $("page-actions").addEventListener("click", (e) => {
     actionsRemoveManual(epicKey, +target.dataset.idx);
   } else if (a === "actions-create-stub") {
     createStubTicket(epicKey, target);
+  } else if (a === "trigger-warmup") {
+    triggerWarmupManually();
+  }
+});
+
+$("page-ppr").addEventListener("click", (e) => {
+  const target = e.target.closest("[data-action]");
+  if (!target) return;
+  if (target.dataset.action === "trigger-warmup") {
+    triggerWarmupManually();
   }
 });
 
@@ -3306,6 +3425,8 @@ async function loadPPR() {
   } catch (e) {
     $("ppr-list").innerHTML = `<p class="status error">failed to load: ${escapeHtml(e.message)}</p>`;
   }
+  warmupState.refreshCallbacks.add(loadPPR);
+  ensureWarmupStarted();
 }
 
 function renderPPR() {

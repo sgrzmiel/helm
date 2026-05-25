@@ -883,6 +883,11 @@ button.is-loading::before {
 }
 .refresh-banner-actions { display: flex; gap: var(--sp-2); }
 .refresh-banner button { padding: 6px 14px; font-size: var(--fs-body3); }
+.refresh-banner.warmup {
+  background: linear-gradient(135deg, rgba(255, 192, 10, 0.18), rgba(255, 166, 2, 0.04));
+  border-color: var(--k-yellow);
+}
+.refresh-banner.warmup .refresh-banner-text { color: var(--k-orange-dark); }
 
 .detail-freshness {
   display: inline-flex;

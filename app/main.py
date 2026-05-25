@@ -515,6 +515,83 @@ async def get_ppr(recent_days: int = 60) -> PPRResponse:
     return PPRResponse(groups=groups, recent_window_days=recent_days)
 
 
+# ---------------------------------------------------------------------------
+# Background analysis warm-up
+# ---------------------------------------------------------------------------
+
+# Module-level state so concurrent triggers don't fire duplicate work.
+_WARMUP_LOCK = asyncio.Lock()
+_WARMUP_PENDING: set[str] = set()  # epic keys currently being analyzed
+_WARMUP_FAILED: dict[str, str] = {}  # epic key -> error message
+
+
+async def _warmup_single(key: str) -> None:
+    """Run analyze_epic for one epic if it's still missing. Best-effort."""
+    if cached_analysis(key) is not None:
+        return
+    try:
+        _require_credentials(
+            "ANTHROPIC_API_KEY", "ATLASSIAN_DOMAIN", "ATLASSIAN_EMAIL", "ATLASSIAN_API_TOKEN"
+        )
+        jira = JiraClient()
+        try:
+            epic, children = await jira.fetch_epic_with_children(key)
+        finally:
+            await jira.aclose()
+        linked_docs = overrides.get_metadata(key).get("documents", []) or []
+        segments_now = overrides.get_metadata(key).get("segments", []) or []
+        await asyncio.to_thread(
+            analyze_epic,
+            epic, children, os.environ.get("ATLASSIAN_EMAIL"),
+            linked_docs, segments_now,
+        )
+        _WARMUP_FAILED.pop(key, None)
+    except Exception as e:
+        _WARMUP_FAILED[key] = str(e)[:300]
+    finally:
+        _WARMUP_PENDING.discard(key)
+
+
+async def _warmup_runner(keys: list[str]) -> None:
+    """Sequentially analyze the supplied keys. Sequential (not parallel) to
+    keep token spend predictable and to not hammer Jira."""
+    for k in keys:
+        await _warmup_single(k)
+
+
+def _missing_analysis_keys() -> list[str]:
+    return [k for k in tracked.list_keys() if cached_analysis(k) is None]
+
+
+@app.get("/api/analyze-missing/status")
+async def analyze_missing_status() -> dict:
+    pending = list(_WARMUP_PENDING)
+    missing = _missing_analysis_keys()
+    return {
+        "in_progress": bool(pending),
+        "pending": pending,
+        "missing": missing,
+        "total_tracked": len(tracked.list_keys()),
+        "failed": dict(_WARMUP_FAILED),
+    }
+
+
+@app.post("/api/analyze-missing", dependencies=[Depends(auth.require_auth)])
+async def analyze_missing() -> dict:
+    """Kick off background analysis for every tracked epic that doesn't have
+    a cached EpicAnalysis. Idempotent - if work is already in progress, just
+    return the current status."""
+    async with _WARMUP_LOCK:
+        if _WARMUP_PENDING:
+            return {"started": False, "reason": "already in progress", "pending": list(_WARMUP_PENDING)}
+        missing = _missing_analysis_keys()
+        if not missing:
+            return {"started": False, "reason": "all epics already analyzed", "pending": []}
+        _WARMUP_PENDING.update(missing)
+        asyncio.create_task(_warmup_runner(missing))
+    return {"started": True, "pending": missing}
+
+
 @app.get("/api/actions", response_model=ActionsResponse)
 async def list_all_actions() -> ActionsResponse:
     """Aggregate every tracked epic's action items into one list, grouped by
