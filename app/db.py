@@ -157,6 +157,12 @@ CREATE TABLE IF NOT EXISTS epic_actions_done (
     PRIMARY KEY (epic_key, sig)
 );
 
+CREATE TABLE IF NOT EXISTS epic_recommendations_dismissed (
+    epic_key  TEXT NOT NULL,
+    sig       TEXT NOT NULL,
+    PRIMARY KEY (epic_key, sig)
+);
+
 CREATE TABLE IF NOT EXISTS epic_action_for_user (
     epic_key  TEXT NOT NULL,
     sig       TEXT NOT NULL,

@@ -665,6 +665,7 @@ const statusState = {
   lastSynced: null,
   showDismissedRisks: false,
   showDismissedGaps: false,
+  showDismissedRecommendations: false,
   showDoneActions: false,
   extractedActions: null, // {proposed: [...], notes: "..."} - preview state
   // When set, holds the result of a background refresh that we haven't applied
@@ -1639,13 +1640,35 @@ function renderDetail() {
     `;
   }
 
-  const recItem = (r) => `
-    <div class="analysis-item">
-      <div class="title">${escapeHtml(r.title)}</div>
-      <div class="detail">${escapeHtml(r.detail)}</div>
-      ${r.ticket_keys.length ? `<div class="refs">→ ${r.ticket_keys.map(ticketKey).join(", ")}</div>` : ""}
-    </div>
-  `;
+  const recItem = (r) => {
+    const cls = ["analysis-item"];
+    if (r.dismissed) cls.push("dismissed");
+    const sig = r.sig || "";
+    const closureOpen = sig && statusState.openClosure?.type === "recommendation" && statusState.openClosure?.sig === sig;
+    const createOpen = sig && statusState.openCreateFromItem?.type === "recommendation" && statusState.openCreateFromItem?.sig === sig;
+    const btnRow = r.dismissed
+      ? `<button class="link-btn detail-link" data-action="restore-recommendation" data-sig="${escapeHtml(sig)}">restore</button>`
+      : `
+        <button class="link-btn detail-link" data-action="open-close" data-type="recommendation" data-sig="${escapeHtml(sig)}">dismiss</button>
+        <button class="link-btn detail-link" data-action="open-create-from-item" data-type="recommendation" data-sig="${escapeHtml(sig)}">create ticket</button>
+      `;
+    return `
+      <div class="${cls.join(" ")}">
+        <div class="title">
+          ${escapeHtml(r.title)}
+          ${btnRow}
+        </div>
+        <div class="detail">${escapeHtml(r.detail)}</div>
+        ${r.ticket_keys.length ? `<div class="refs">→ ${r.ticket_keys.map(ticketKey).join(", ")}</div>` : ""}
+        ${closureOpen ? closureForm("recommendation", sig, "dismiss this recommendation") : ""}
+        ${createOpen ? createFromItemForm("recommendation", sig, undefined, {
+          summary: r.title,
+          description: r.detail,
+          project: "KAHOOT",
+        }) : ""}
+      </div>
+    `;
+  };
 
   // Build a flat index of manual actions so the remove button knows its position
   // in the server-side `actions_added` array. Manual items always come first in
@@ -1823,11 +1846,21 @@ function renderDetail() {
         </div>`;
     })() : ""}
 
-    ${a.recommendations.length ? `
-      <div class="analysis-section">
-        <h4>Recommendations (${a.recommendations.length})</h4>
-        ${a.recommendations.map(recItem).join("")}
-      </div>` : ""}
+    ${a.recommendations.length ? (() => {
+      const visibleRecs = a.recommendations.filter((r) => !r.dismissed);
+      const dismissedRecs = a.recommendations.filter((r) => r.dismissed);
+      const showDr = statusState.showDismissedRecommendations === true;
+      return `
+        <div class="analysis-section">
+          <h4>
+            Recommendations
+            <span class="count">(${visibleRecs.length}${dismissedRecs.length ? ` + ${dismissedRecs.length} dismissed` : ""})</span>
+            ${dismissedRecs.length ? `<button class="link-btn detail-link" data-action="toggle-dismissed-recommendations">${showDr ? "hide" : "show"} dismissed</button>` : ""}
+          </h4>
+          ${visibleRecs.map(recItem).join("")}
+          ${showDr ? dismissedRecs.map(recItem).join("") : ""}
+        </div>`;
+    })() : ""}
 
     <div class="analysis-section">
       <h4>Tickets (${d.tickets.length})</h4>
@@ -1979,6 +2012,11 @@ $("status-detail").addEventListener("click", (e) => {
     restoreRisk(key, target.dataset.sig);
   } else if (action === "restore-gap") {
     restoreGap(key, target.dataset.sig);
+  } else if (action === "restore-recommendation") {
+    restoreRecommendation(key, target.dataset.sig);
+  } else if (action === "toggle-dismissed-recommendations") {
+    statusState.showDismissedRecommendations = !statusState.showDismissedRecommendations;
+    renderDetail();
   } else if (action === "toggle-dismissed-risks") {
     statusState.showDismissedRisks = !statusState.showDismissedRisks;
     renderDetail();
@@ -2090,6 +2128,9 @@ async function confirmClose(key, type, sig) {
     } else if (type === "gap") {
       const g = statusState.detail.analysis.gaps.find((x) => x.sig === sig);
       if (g) g.dismissed = true;
+    } else if (type === "recommendation") {
+      const r = statusState.detail.analysis.recommendations.find((x) => x.sig === sig);
+      if (r) r.dismissed = true;
     } else if (type === "action") {
       const a = statusState.detail.analysis.action_items.find((x) => x.sig === sig);
       if (a) a.done = true;
@@ -2109,6 +2150,7 @@ function closeUrlFor(key, type, sig) {
   const s = encodeURIComponent(sig);
   if (type === "risk") return `/api/tracked/${k}/risks/${s}/dismiss`;
   if (type === "gap") return `/api/tracked/${k}/gaps/${s}/dismiss`;
+  if (type === "recommendation") return `/api/tracked/${k}/recommendations/${s}/dismiss`;
   if (type === "action") return `/api/tracked/${k}/actions/${s}/done`;
   return null;
 }
@@ -2133,6 +2175,19 @@ async function restoreGap(key, sig) {
     if (!resp.ok) throw new Error(resp.statusText);
     const g = statusState.detail.analysis.gaps.find((x) => x.sig === sig);
     if (g) g.dismissed = false;
+    renderDetail();
+  } catch (e) {
+    alert(`Restore failed: ${e.message}`);
+  }
+}
+
+async function restoreRecommendation(key, sig) {
+  if (!sig) return;
+  try {
+    const resp = await fetch(`/api/tracked/${encodeURIComponent(key)}/recommendations/${encodeURIComponent(sig)}/dismiss`, { method: "DELETE" });
+    if (!resp.ok) throw new Error(resp.statusText);
+    const r = statusState.detail.analysis.recommendations.find((x) => x.sig === sig);
+    if (r) r.dismissed = false;
     renderDetail();
   } catch (e) {
     alert(`Restore failed: ${e.message}`);

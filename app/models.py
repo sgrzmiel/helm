@@ -270,6 +270,8 @@ class Recommendation(BaseModel):
     title: str
     detail: str
     ticket_keys: list[str] = Field(default_factory=list)
+    sig: Optional[str] = Field(default=None, description="Stable 12-char signature; mirrors Risk.sig usage.")
+    dismissed: bool = Field(default=False, description="Set by server when the user has dismissed this recommendation.")
 
 
 class EpicAnalysis(BaseModel):
@@ -406,7 +408,7 @@ class CreateFromItemRequest(BaseModel):
     duedate: Optional[str] = None
     components: list[str] = Field(default_factory=list)
     # Origin tracking so we can mark the source item closed
-    source_type: Literal["gap", "action"]
+    source_type: Literal["gap", "action", "recommendation"]
     source_sig: Optional[str] = None
     source_index: Optional[int] = None  # for manual-action source: actions_added index
 

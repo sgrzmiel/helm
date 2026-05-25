@@ -16,7 +16,7 @@ from typing import Literal, Optional
 
 from .db import _q
 
-CloseType = Literal["risk", "gap", "action"]
+CloseType = Literal["risk", "gap", "action", "recommendation"]
 CloseAction = Literal["close", "reopen"]
 
 

@@ -162,6 +162,21 @@ def restore_gap(key: str, sig: str) -> set[str]:
     return get_dismissed_gaps(key)
 
 
+def get_dismissed_recommendations(key: str) -> set[str]:
+    rows = _qa("SELECT sig FROM epic_recommendations_dismissed WHERE epic_key = ?", (key,))
+    return {r["sig"] for r in rows}
+
+
+def dismiss_recommendation(key: str, sig: str) -> set[str]:
+    _q("INSERT OR IGNORE INTO epic_recommendations_dismissed(epic_key, sig) VALUES (?, ?)", (key, sig))
+    return get_dismissed_recommendations(key)
+
+
+def restore_recommendation(key: str, sig: str) -> set[str]:
+    _q("DELETE FROM epic_recommendations_dismissed WHERE epic_key = ? AND sig = ?", (key, sig))
+    return get_dismissed_recommendations(key)
+
+
 def get_done_actions(key: str) -> set[str]:
     rows = _qa("SELECT sig FROM epic_actions_done WHERE epic_key = ?", (key,))
     return {r["sig"] for r in rows}

@@ -47,6 +47,7 @@ from .models import (  # noqa: E402
     ExtractedActionsResponse,
     Gap,
     Idea,
+    Recommendation,
     IdeasResponse,
     LoginRequest,
     PlanRequest,
@@ -827,6 +828,19 @@ def _apply_overrides(key: str, analysis):
             dismissed=sig in dismissed_gaps,
         ))
     analysis.gaps = new_gaps
+
+    dismissed_recs = overrides.get_dismissed_recommendations(key)
+    new_recs: list[Recommendation] = []
+    for r in analysis.recommendations:
+        sig = overrides.risk_signature(r.title, r.detail)
+        new_recs.append(Recommendation(
+            title=r.title,
+            detail=r.detail,
+            ticket_keys=r.ticket_keys,
+            sig=sig,
+            dismissed=sig in dismissed_recs,
+        ))
+    analysis.recommendations = new_recs
     return analysis
 
 
@@ -956,6 +970,8 @@ def _lookup_item_text(key: str, item_type: str, sig: str) -> tuple[str, str]:
         pool = [(r.title, r.detail, overrides.risk_signature(r.title, r.detail)) for r in analysis.risks]
     elif item_type == "gap":
         pool = [(g.title, g.detail, overrides.risk_signature(g.title, g.detail)) for g in analysis.gaps]
+    elif item_type == "recommendation":
+        pool = [(r.title, r.detail, overrides.risk_signature(r.title, r.detail)) for r in analysis.recommendations]
     elif item_type == "action":
         merged = list(overrides.get_actions(key)) + list(analysis.action_items)
         pool = [(a.title, a.detail, overrides.action_signature(a.title, a.detail)) for a in merged]
@@ -1006,6 +1022,29 @@ async def restore_gap(key: str, sig: str) -> dict:
     title, detail = _lookup_item_text(key, "gap", sig)
     closure_log.record(key, "gap", "reopen", sig, title, detail)
     return {"dismissed": list(overrides.get_dismissed_gaps(key))}
+
+
+# ---- Recommendation dismissal -------------------------------------------
+
+
+@app.post("/api/tracked/{key}/recommendations/{sig}/dismiss", dependencies=[Depends(auth.require_auth)])
+async def dismiss_recommendation(key: str, sig: str, req: CloseRequest = CloseRequest()) -> dict:
+    if key not in tracked.list_keys():
+        raise HTTPException(status_code=404, detail=f"{key} is not tracked")
+    overrides.dismiss_recommendation(key, sig)
+    title, detail = _lookup_item_text(key, "recommendation", sig)
+    closure_log.record(key, "recommendation", "close", sig, title, detail, req.reason)
+    return {"dismissed": list(overrides.get_dismissed_recommendations(key))}
+
+
+@app.delete("/api/tracked/{key}/recommendations/{sig}/dismiss", dependencies=[Depends(auth.require_auth)])
+async def restore_recommendation(key: str, sig: str) -> dict:
+    if key not in tracked.list_keys():
+        raise HTTPException(status_code=404, detail=f"{key} is not tracked")
+    overrides.restore_recommendation(key, sig)
+    title, detail = _lookup_item_text(key, "recommendation", sig)
+    closure_log.record(key, "recommendation", "reopen", sig, title, detail)
+    return {"dismissed": list(overrides.get_dismissed_recommendations(key))}
 
 
 # ---- Manual actions ------------------------------------------------------
@@ -1120,6 +1159,13 @@ async def create_from_item(key: str, req: CreateFromItemRequest) -> CreateFromIt
         overrides.dismiss_gap(key, req.source_sig)
         closure_log.record(
             key, "gap", "close", req.source_sig,
+            req.summary, req.description,
+            f"Created Jira ticket {new_key}",
+        )
+    elif req.source_type == "recommendation" and req.source_sig:
+        overrides.dismiss_recommendation(key, req.source_sig)
+        closure_log.record(
+            key, "recommendation", "close", req.source_sig,
             req.summary, req.description,
             f"Created Jira ticket {new_key}",
         )
