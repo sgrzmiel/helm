@@ -714,20 +714,36 @@ async def remove_tracked(key: str) -> dict:
     return {"keys": tracked.remove(key)}
 
 
-async def _build_detail(key: str, force_refresh: bool) -> EpicDetail:
-    _require_credentials(
-        "ANTHROPIC_API_KEY", "ATLASSIAN_DOMAIN", "ATLASSIAN_EMAIL", "ATLASSIAN_API_TOKEN"
-    )
+async def _fetch_epic_basics(key: str) -> tuple[TicketSnapshot, list[TicketSnapshot]]:
     jira = JiraClient()
     try:
         try:
-            epic, children = await jira.fetch_epic_with_children(key)
+            return await jira.fetch_epic_with_children(key)
         except JiraError as e:
             raise HTTPException(status_code=502, detail=f"jira fetch failed: {e}")
     finally:
         await jira.aclose()
 
-    counts = _compute_counts(children)
+
+def _basic_detail(key: str, epic, children, analysis=None, analyzed_at=None) -> EpicDetail:
+    meta = overrides.get_metadata(key)
+    return EpicDetail(
+        epic=epic,
+        tickets=children,
+        counts=_compute_counts(children),
+        progress_pct=_progress(_compute_counts(children)),
+        analysis=analysis,
+        analyzed_at=analyzed_at,
+        role_split=_compute_role_split(children),
+        metadata=EpicMetadata(**meta) if meta else None,
+    )
+
+
+async def _build_detail(key: str, force_refresh: bool) -> EpicDetail:
+    _require_credentials(
+        "ANTHROPIC_API_KEY", "ATLASSIAN_DOMAIN", "ATLASSIAN_EMAIL", "ATLASSIAN_API_TOKEN"
+    )
+    epic, children = await _fetch_epic_basics(key)
 
     if force_refresh:
         clear_analysis_cache(key)
@@ -750,23 +766,12 @@ async def _build_detail(key: str, force_refresh: bool) -> EpicDetail:
 
     analysis = _apply_overrides(key, analysis)
 
-    # Keep the dashboard card chip in sync with the detail view's assessment.
     if key in _DASHBOARD_CACHE:
         _DASHBOARD_CACHE[key] = _DASHBOARD_CACHE[key].model_copy(
             update={"assessment": analysis.progress_assessment},
         )
 
-    meta = overrides.get_metadata(key)
-    return EpicDetail(
-        epic=epic,
-        tickets=children,
-        counts=counts,
-        progress_pct=_progress(counts),
-        analysis=analysis,
-        analyzed_at=analyzed_at,
-        role_split=_compute_role_split(children),
-        metadata=EpicMetadata(**meta) if meta else None,
-    )
+    return _basic_detail(key, epic, children, analysis=analysis, analyzed_at=analyzed_at)
 
 
 def _apply_overrides(key: str, analysis):
@@ -842,6 +847,23 @@ def _apply_overrides(key: str, analysis):
         ))
     analysis.recommendations = new_recs
     return analysis
+
+
+@app.get("/api/tracked/{key}/basic", response_model=EpicDetail, dependencies=[Depends(auth.require_auth)])
+async def get_tracked_basic(key: str) -> EpicDetail:
+    """Fast path - Jira fetch + counts + role split + metadata, no LLM trigger.
+
+    If an analysis is already cached on disk, it's attached too; otherwise the
+    frontend should fire the full GET in the background to populate it.
+    """
+    _require_credentials("ATLASSIAN_DOMAIN", "ATLASSIAN_EMAIL", "ATLASSIAN_API_TOKEN")
+    epic, children = await _fetch_epic_basics(key)
+    cached = cached_analysis(key)
+    analysis = analyzed_at = None
+    if cached:
+        analysis, analyzed_at = cached
+        analysis = _apply_overrides(key, analysis)
+    return _basic_detail(key, epic, children, analysis=analysis, analyzed_at=analyzed_at)
 
 
 @app.get("/api/tracked/{key}", response_model=EpicDetail, dependencies=[Depends(auth.require_auth)])

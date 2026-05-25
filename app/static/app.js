@@ -1394,7 +1394,24 @@ async function viewDetail(key, forceRefresh = false) {
     showDetailFreshnessIndicator("checking for updates…");
   } else {
     statusState.detail = null;
-    $("status-detail").innerHTML = `<p class="status">${forceRefresh ? "refreshing analysis…" : "loading detail (may take 30-60s on first analysis)…"}</p>`;
+    $("status-detail").innerHTML = `<p class="status">${forceRefresh ? "refreshing analysis…" : "loading…"}</p>`;
+    // Fire the fast (no-LLM) path in parallel so the header/tickets/progress
+    // show up immediately while the LLM analysis is still running below.
+    if (!forceRefresh) {
+      fetch(`/api/tracked/${encodeURIComponent(key)}/basic`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((basic) => {
+          // Only apply if the user hasn't navigated away and the full detail
+          // hasn't already arrived.
+          if (!basic) return;
+          if (statusState.currentKey !== key) return;
+          if (statusState.detail) return;
+          statusState.detail = basic;
+          renderDetail();
+          if (!basic.analysis) showDetailFreshnessIndicator("running analysis (30-60s)…");
+        })
+        .catch(() => { /* non-fatal */ });
+    }
   }
 
   try {
@@ -1430,7 +1447,7 @@ async function viewDetail(key, forceRefresh = false) {
       statusState.pendingDetailRefresh = null;
       saveCachedDetail(key, fresh);
       if (!cached) renderDetail();
-      else clearDetailFreshnessIndicator();
+      clearDetailFreshnessIndicator();
     }
   } catch (e) {
     if (cached) {
@@ -1500,6 +1517,12 @@ function renderDetail() {
   const d = statusState.detail;
   if (!d) return;
   const a = d.analysis;
+  const analysisLoading = !a;
+  const loadingBlock = (label) => `
+    <div class="analysis-section analysis-loading">
+      <h4>${label}</h4>
+      <p class="status loading"><span class="spinner"></span> analyzing (typically 30-60s)…</p>
+    </div>`;
 
   const actionItem = (item, manualIndex) => {
     const cls = ["analysis-item", `urgency-${item.urgency}`];
@@ -1674,7 +1697,7 @@ function renderDetail() {
   // in the server-side `actions_added` array. Manual items always come first in
   // the merged list (server-side ordering), so we can count them up to each item.
   let manualSeen = 0;
-  const decoratedActions = a.action_items.map((item) => {
+  const decoratedActions = (a?.action_items || []).map((item) => {
     if (item.source === "manual") {
       const wrapped = { item, manualIdx: manualSeen };
       manualSeen += 1;
@@ -1699,8 +1722,8 @@ function renderDetail() {
     ? decoratedActions
     : decoratedActions.filter((d) => !d.item.done);
 
-  const visibleRisks = a.risks.filter((r) => !r.dismissed);
-  const dismissedRisks = a.risks.filter((r) => r.dismissed);
+  const visibleRisks = (a?.risks || []).filter((r) => !r.dismissed);
+  const dismissedRisks = (a?.risks || []).filter((r) => r.dismissed);
   const showDismissed = statusState.showDismissedRisks === true;
 
   $("status-detail").innerHTML = `
@@ -1710,7 +1733,7 @@ function renderDetail() {
         <div class="meta">
           ${d.epic.status ? `status: ${escapeHtml(d.epic.status)} · ` : ""}
           ${d.epic.duedate ? `due: ${escapeHtml(d.epic.duedate)} · ` : ""}
-          <span class="assessment assessment-${a.progress_assessment}">${escapeHtml(a.progress_assessment)}</span>
+          ${a ? `<span class="assessment assessment-${a.progress_assessment}">${escapeHtml(a.progress_assessment)}</span>` : `<span class="assessment assessment-loading">analyzing…</span>`}
         </div>
         ${(d.metadata?.stakeholder || d.metadata?.one_pager_url || (d.metadata?.segments || []).length) ? `
           <div class="meta epic-meta-row">
@@ -1802,9 +1825,10 @@ function renderDetail() {
         <div id="extract-preview"></div>
       </div>
 
-      ${a.action_items.length === 0 ? '<p class="empty-state">No action items yet. Add one manually or extract them from a discussion.</p>' : ""}
+      ${analysisLoading ? '<p class="status loading"><span class="spinner"></span> analyzing actions (typically 30-60s)…</p>' : ""}
+      ${!analysisLoading && a.action_items.length === 0 ? '<p class="empty-state">No action items yet. Add one manually or extract them from a discussion.</p>' : ""}
       ${visibleDecorated.map(({ item, manualIdx }) => actionItem(item, manualIdx)).join("")}
-      ${a.action_items.length > 0 && visibleDecorated.length === 0 ? '<p class="empty-state">All actions done. Click "show done" to see them.</p>' : ""}
+      ${!analysisLoading && a.action_items.length > 0 && visibleDecorated.length === 0 ? '<p class="empty-state">All actions done. Click "show done" to see them.</p>' : ""}
     </section>
 
     ${progressBar(d.counts)}
@@ -1814,12 +1838,14 @@ function renderDetail() {
         ${roleSplitRow(d.role_split, { compact: false })}
       </div>` : ""}
 
+    ${analysisLoading ? loadingBlock("State of play") : `
     <div class="analysis-section">
       <h4>State of play</h4>
       <p>${escapeHtml(a.state_of_play)}</p>
-    </div>
+    </div>`}
 
-    ${visibleRisks.length || dismissedRisks.length ? `
+    ${analysisLoading ? loadingBlock("Risks") : ""}
+    ${!analysisLoading && (visibleRisks.length || dismissedRisks.length) ? `
       <div class="analysis-section">
         <h4>
           Risks
@@ -1830,7 +1856,8 @@ function renderDetail() {
         ${showDismissed ? dismissedRisks.map(riskItem).join("") : ""}
       </div>` : ""}
 
-    ${a.gaps.length ? (() => {
+    ${analysisLoading ? loadingBlock("Gaps / missing scope") : ""}
+    ${!analysisLoading && a.gaps.length ? (() => {
       const visibleGaps = a.gaps.filter((g) => !g.dismissed);
       const dismissedGaps = a.gaps.filter((g) => g.dismissed);
       const showDg = statusState.showDismissedGaps === true;
@@ -1846,7 +1873,8 @@ function renderDetail() {
         </div>`;
     })() : ""}
 
-    ${a.recommendations.length ? (() => {
+    ${analysisLoading ? loadingBlock("Recommendations") : ""}
+    ${!analysisLoading && a.recommendations.length ? (() => {
       const visibleRecs = a.recommendations.filter((r) => !r.dismissed);
       const dismissedRecs = a.recommendations.filter((r) => r.dismissed);
       const showDr = statusState.showDismissedRecommendations === true;
@@ -1886,7 +1914,7 @@ function renderDetail() {
       `}
     </div>
 
-    <div class="analyzed-at">analyzed ${escapeHtml(d.analyzed_at)}</div>
+    ${d.analyzed_at ? `<div class="analyzed-at">analyzed ${escapeHtml(d.analyzed_at)}</div>` : ""}
   `;
 }
 

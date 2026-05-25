@@ -375,8 +375,8 @@ class EpicDetail(BaseModel):
     tickets: list[TicketSnapshot]
     counts: StatusCounts
     progress_pct: int
-    analysis: EpicAnalysis
-    analyzed_at: str  # ISO timestamp
+    analysis: Optional[EpicAnalysis] = None
+    analyzed_at: Optional[str] = None  # ISO timestamp
     role_split: Optional[RoleSplit] = None
     metadata: Optional[EpicMetadata] = None
 
