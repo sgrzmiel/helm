@@ -1,0 +1,459 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Helm</title>
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body>
+    <div class="top-bar">
+      <div class="top-bar-inner">
+        <div class="brand-mark">K!</div>
+        <div>
+          <div class="wordmark">Helm</div>
+          <div class="wordmark-sub">Agentic product-management cockpit: ideas, requirements, projects, actions, Slack replies</div>
+        </div>
+        <div class="top-bar-spacer"></div>
+        <div id="auth-area" class="auth-area">
+          <button id="auth-login-btn" type="button" class="secondary">Log in</button>
+          <button id="auth-logout-btn" type="button" class="secondary">Log out</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="login-modal" class="login-modal hidden">
+      <div class="login-card">
+        <h3>Log in</h3>
+        <p class="sub">Enter the Helm password to enable changes. Without it the dashboard is read-only.</p>
+        <input type="password" id="login-password" placeholder="Password" autocomplete="current-password" />
+        <div class="row">
+          <button id="login-confirm-btn" type="button">Log in</button>
+          <button id="login-cancel-btn" type="button" class="secondary">Cancel</button>
+          <span id="login-status" class="status"></span>
+        </div>
+      </div>
+    </div>
+
+    <div id="idea-edit-modal" class="login-modal hidden">
+      <div class="login-card idea-edit-card">
+        <div class="modal-head">
+          <h3>Edit idea</h3>
+          <button class="icon-btn" id="idea-edit-close" type="button" title="Close">×</button>
+        </div>
+        <div class="modal-grid">
+          <label>
+            <span class="modal-field-label">Title</span>
+            <input type="text" id="idea-edit-title" />
+          </label>
+          <label>
+            <span class="modal-field-label">Notes</span>
+            <textarea id="idea-edit-notes" rows="6"></textarea>
+          </label>
+          <label>
+            <span class="modal-field-label">Documents</span>
+            <div id="idea-edit-docs" class="doc-list"></div>
+            <button id="idea-edit-add-doc" type="button" class="secondary doc-add-btn">+ Add document</button>
+          </label>
+          <label>
+            <span class="modal-field-label">Stakeholder</span>
+            <input type="text" id="idea-edit-stakeholder" placeholder="Who raised it" />
+          </label>
+          <label>
+            <span class="modal-field-label">Status</span>
+            <select id="idea-edit-status-select">
+              <option value="exploring">Exploring</option>
+              <option value="parked">Parked</option>
+              <option value="queued">Queued</option>
+              <option value="promoted">Promoted</option>
+              <option value="dropped">Dropped</option>
+            </select>
+          </label>
+          <div id="idea-edit-meta" class="modal-meta"></div>
+        </div>
+        <div class="row modal-actions">
+          <button id="idea-edit-save" type="button">Save</button>
+          <button id="idea-edit-cancel" type="button" class="secondary">Cancel</button>
+          <button id="idea-edit-delete" type="button" class="danger">Delete</button>
+          <span id="idea-edit-status" class="status"></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="tabs-bar">
+      <nav id="main-nav">
+        <button type="button" data-page="status" class="nav-btn active">Projects Dashboard</button>
+        <button type="button" data-page="ppr" class="nav-btn">PPR</button>
+        <button type="button" data-page="actions" class="nav-btn">Actions</button>
+        <button type="button" data-page="ideas" class="nav-btn">Ideas</button>
+        <button type="button" data-page="sync" class="nav-btn">Manage requirements</button>
+        <button type="button" data-page="slack" class="nav-btn">Slack reply</button>
+        <button type="button" data-page="settings" class="nav-btn">Settings</button>
+      </nav>
+    </div>
+
+    <div class="page-container">
+
+    <main id="page-sync" class="hidden">
+      <section id="input-section" class="panel">
+        <label for="tickets-source">
+          <strong>Tickets source</strong>
+          <span class="hint">epic URL / JQL / comma- or newline-separated keys - <em>leave empty to create a new Epic in KAHOOT</em></span>
+        </label>
+        <textarea
+          id="tickets-source"
+          rows="3"
+          placeholder="FE-101, FE-102, FE-103&#10;or: project = FE AND labels = your-label AND status = &quot;Selected for Development&quot;&#10;or: https://example.atlassian.net/browse/FE-101&#10;&#10;Leave empty → new Epic created in FE project + child tickets in FE/BE"
+        ></textarea>
+
+        <label for="context">
+          <strong>Context</strong>
+          <span class="hint">meeting summary, requirements, conversation, decisions, anything</span>
+        </label>
+        <textarea
+          id="context"
+          rows="14"
+          placeholder="Paste meeting summary / requirements bullets / decisions / notes here."
+        ></textarea>
+
+        <label for="figma-url">
+          <strong>Figma URL</strong>
+          <span class="hint">optional - file/design/board link; content fetched server-side via Figma API</span>
+        </label>
+        <input
+          type="text"
+          id="figma-url"
+          placeholder="https://www.figma.com/design/{file_key}/..."
+        />
+
+        <div class="row">
+          <button id="generate-btn" type="button">Generate plan</button>
+          <span id="generate-status" class="status"></span>
+        </div>
+      </section>
+
+      <section id="snapshots-section" class="panel hidden">
+        <h2>Existing tickets</h2>
+        <div id="snapshots"></div>
+      </section>
+
+      <section id="proposal-section" class="panel hidden">
+        <h2>Proposal</h2>
+
+        <div id="proposal-notes"></div>
+
+        <h3>Updates <span id="updates-count" class="count"></span></h3>
+        <div id="updates"></div>
+
+        <h3>Creates <span id="creates-count" class="count"></span></h3>
+        <div id="creates"></div>
+
+        <h3>Closes <span id="closes-count" class="count"></span></h3>
+        <div id="closes"></div>
+
+        <h3>Links <span id="links-count" class="count"></span></h3>
+        <div id="links"></div>
+
+        <div class="row">
+          <button id="apply-btn" type="button">Apply changes</button>
+          <span id="apply-status" class="status"></span>
+        </div>
+      </section>
+
+      <section id="results-section" class="panel hidden">
+        <h2>Results</h2>
+        <div id="results"></div>
+      </section>
+    </main>
+
+    <main id="page-status">
+      <div class="anon-banner">
+        You're viewing Helm in <strong>read-only mode</strong>. Log in to manage requirements, track epics, dismiss risks, or use the Slack reply tools.
+      </div>
+      <section class="panel">
+        <div class="dashboard-header">
+          <div>
+            <h2>Projects Dashboard</h2>
+            <p class="sub">Tracked epics with AI analysis. Add an Epic by key. Click a card to see action items, risks, gaps, and the ticket list.</p>
+          </div>
+          <div class="dashboard-meta">
+            <span id="dashboard-last-synced" class="sync-time"></span>
+            <button id="refresh-all-btn" type="button" class="secondary">Refresh all</button>
+          </div>
+        </div>
+        <div class="row">
+          <input type="text" id="track-key" placeholder="Epic key (FE-101) or full URL" style="max-width: 420px" />
+          <button id="track-btn" type="button">Track</button>
+          <span id="track-status" class="status"></span>
+        </div>
+        <div id="tracked-list"></div>
+      </section>
+
+      <section id="status-detail-section" class="panel hidden">
+        <div id="status-detail"></div>
+      </section>
+    </main>
+
+    <main id="page-slack" class="hidden">
+      <section class="panel">
+        <h2>Slack reply</h2>
+        <p class="sub">
+          Paste a thread / doc + your draft → get a polished English reply in your team tone.
+          Input can be Polish; output is always English.
+        </p>
+
+        <label for="slack-context">
+          <strong>Context</strong>
+          <span class="hint">slack thread, doc, requirements, conversation - anything that frames the reply</span>
+        </label>
+        <textarea id="slack-context" rows="10" placeholder="Paste the thread or the situation here."></textarea>
+
+        <label for="slack-draft">
+          <strong>Your draft</strong>
+          <span class="hint">optional - rough version of what you want to say (Polish OK)</span>
+        </label>
+        <textarea id="slack-draft" rows="6" placeholder="Rough draft of your reply - bullet points, half-sentences, Polish, all fine."></textarea>
+
+        <fieldset class="audience-row">
+          <legend><strong>Audience</strong></legend>
+          <label class="radio-inline">
+            <input type="radio" name="slack-audience" value="c-suite" />
+            C-suite (CEO / CPO / CTO / VPs) - short, business-impact, no jargon
+          </label>
+          <label class="radio-inline">
+            <input type="radio" name="slack-audience" value="other" checked />
+            Other (peers / cross-functional) - more detail OK, collaborative tone
+          </label>
+        </fieldset>
+
+        <div class="row">
+          <button id="slack-generate-btn" type="button">Generate reply</button>
+          <span id="slack-status" class="status"></span>
+        </div>
+      </section>
+
+      <section id="slack-output-section" class="panel hidden">
+        <div class="slack-output-header">
+          <h2>Reply</h2>
+          <div class="row" style="margin: 0; gap: 8px">
+            <button id="slack-copy-btn" type="button" class="secondary">Copy</button>
+            <span id="slack-copy-status" class="status"></span>
+          </div>
+        </div>
+        <pre id="slack-output" class="slack-output"></pre>
+        <div id="slack-notes" class="slack-notes"></div>
+      </section>
+    </main>
+
+    <main id="page-ppr" class="hidden">
+      <section class="panel">
+        <div class="dashboard-header">
+          <div>
+            <h2>Project Portfolio Review</h2>
+            <p class="sub">
+              Stakeholder-ready summary across all tracked projects: what's coming, what's being built, what just shipped.
+              One screen for a 10-minute walk-through.
+            </p>
+          </div>
+          <div class="dashboard-meta">
+            <div id="ppr-segment-filter" class="segment-row" data-action="ppr-segment-filter"></div>
+          </div>
+        </div>
+        <div id="ppr-list"></div>
+      </section>
+    </main>
+
+    <main id="page-actions" class="hidden">
+      <section class="panel">
+        <div class="dashboard-header">
+          <div>
+            <h2>Actions</h2>
+            <p class="sub">
+              All open action items across your tracked projects, grouped by epic.
+              Manual additions float to the top within each group; mark done sinks to the bottom.
+            </p>
+          </div>
+          <div class="dashboard-meta">
+            <label class="checkbox-inline">
+              <input type="checkbox" id="actions-mine-only" />
+              Only mine
+            </label>
+            <label class="checkbox-inline">
+              <input type="checkbox" id="actions-show-done" />
+              Show done
+            </label>
+          </div>
+        </div>
+        <div id="actions-list"></div>
+      </section>
+    </main>
+
+    <main id="page-ideas" class="hidden">
+      <section class="panel">
+        <div class="dashboard-header">
+          <div>
+            <h2>Ideas</h2>
+            <p class="sub">
+              Capture early-stage ideas from stakeholders or yourself. Drag cards between columns as they evolve.
+              Promote one to start the Manage requirements flow with its context prefilled.
+            </p>
+          </div>
+          <div class="dashboard-meta">
+            <button id="idea-add-btn" type="button">+ Add idea</button>
+          </div>
+        </div>
+        <div id="idea-add-form" class="inline-form hidden">
+          <div class="form-grid">
+            <input type="text" id="new-idea-title" placeholder="Title (e.g. 'Dashboard for monthly metrics')" />
+            <textarea id="new-idea-notes" rows="2" placeholder="Notes, context, why it matters"></textarea>
+            <input type="text" id="new-idea-onepager" placeholder="One-pager URL (optional)" />
+            <input type="text" id="new-idea-stakeholder" placeholder="Stakeholder (optional)" />
+            <div class="form-actions">
+              <button id="idea-save-btn" type="button">Save idea</button>
+              <button id="idea-cancel-btn" type="button" class="secondary">Cancel</button>
+              <span id="idea-form-status" class="status"></span>
+            </div>
+          </div>
+        </div>
+        <div id="idea-board" class="idea-board"></div>
+      </section>
+    </main>
+
+    <main id="page-settings" class="hidden">
+      <section class="panel">
+        <h2>Company config</h2>
+        <p class="sub">
+          Values that personalize the LLM prompts for your team. Edits take effect
+          on the next analysis (no restart). Stakeholders live in the Team members
+          section below.
+        </p>
+        <div class="settings-row">
+          <label>Company name</label>
+          <input id="cfg-company-name" type="text" placeholder="e.g. Acme Inc." />
+        </div>
+        <div class="settings-row">
+          <label>Frontend project key</label>
+          <input id="cfg-fe-project" type="text" placeholder="e.g. FE" />
+        </div>
+        <div class="settings-row">
+          <label>Backend project key</label>
+          <input id="cfg-be-project" type="text" placeholder="e.g. BE" />
+        </div>
+        <div class="settings-row">
+          <label>Required label (every ticket)</label>
+          <input id="cfg-required-label" type="text" placeholder="e.g. Commercial (blank = none)" />
+        </div>
+        <div class="settings-row">
+          <label>Business context</label>
+          <textarea id="cfg-business-context" rows="3" placeholder="One short paragraph about current focus / active initiatives. Gets injected into prompts as background."></textarea>
+        </div>
+        <div class="row">
+          <button id="cfg-save-btn" type="button">Save company config</button>
+          <span id="cfg-status" class="status"></span>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Team members</h2>
+        <p class="sub">
+          Define who's backend, frontend, or design - Projects Dashboard splits epic progress by role.
+          For Name use whatever shows in Jira: handle (<code>tomaszs</code>), first name (<code>Tomasz</code>),
+          or full display name. Email is optional but helps when Jira hides display names.
+        </p>
+        <div id="team-members-list"></div>
+        <div class="row">
+          <button id="team-add-btn" type="button" class="secondary">+ Add member</button>
+          <button id="team-save-btn" type="button">Save team</button>
+          <span id="team-status" class="status"></span>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Credentials</h2>
+        <p class="sub">
+          Tokens are written to <code>.env</code> (gitignored) and applied to the running server immediately -
+          no restart required. Empty input = keep existing value.
+        </p>
+
+        <form id="settings-form">
+          <h3>Atlassian (Jira)</h3>
+          <div class="settings-row">
+            <label>Domain</label>
+            <input name="ATLASSIAN_DOMAIN" type="text" placeholder="example.atlassian.net" />
+          </div>
+          <div class="settings-row">
+            <label>Email</label>
+            <input name="ATLASSIAN_EMAIL" type="text" placeholder="you@company.com" />
+          </div>
+          <div class="settings-row">
+            <label>API token <span id="status-ATLASSIAN_API_TOKEN" class="status-pill"></span></label>
+            <input name="ATLASSIAN_API_TOKEN" type="password" placeholder="leave empty to keep current" autocomplete="off" />
+          </div>
+
+          <h3>Anthropic (Claude)</h3>
+          <div class="settings-row">
+            <label>API key <span id="status-ANTHROPIC_API_KEY" class="status-pill"></span></label>
+            <input name="ANTHROPIC_API_KEY" type="password" placeholder="sk-ant-..." autocomplete="off" />
+          </div>
+
+          <h3>Figma</h3>
+          <div class="settings-row">
+            <label>API token <span id="status-FIGMA_API_TOKEN" class="status-pill"></span></label>
+            <input name="FIGMA_API_TOKEN" type="password" placeholder="figd_..." autocomplete="off" />
+          </div>
+
+          <h3>Google Drive <span id="google-status-pill" class="status-pill"></span></h3>
+          <p class="sub">
+            Lets Helm read Google Docs + Slides linked to ideas / projects.
+            <button type="button" id="google-setup-help" class="link-btn">how to set up ↗</button>
+          </p>
+          <div class="settings-row">
+            <label>OAuth client ID</label>
+            <input name="GOOGLE_CLIENT_ID" type="text" placeholder="123...apps.googleusercontent.com" />
+          </div>
+          <div class="settings-row">
+            <label>OAuth client secret <span id="status-GOOGLE_CLIENT_SECRET" class="status-pill"></span></label>
+            <input name="GOOGLE_CLIENT_SECRET" type="password" placeholder="leave empty to keep current" autocomplete="off" />
+          </div>
+          <div class="row">
+            <button type="button" id="google-connect-btn" class="secondary">Connect Google Drive</button>
+            <button type="button" id="google-disconnect-btn" class="secondary hidden">Disconnect</button>
+            <span id="google-status" class="status"></span>
+          </div>
+
+          <div class="row">
+            <button type="submit">Save</button>
+            <button type="button" id="settings-reveal" class="secondary">Reveal inputs</button>
+            <span id="settings-status" class="status"></span>
+          </div>
+        </form>
+      </section>
+    </main>
+
+    <div id="google-setup-modal" class="login-modal hidden">
+      <div class="login-card idea-edit-card">
+        <div class="modal-head">
+          <h3>Set up Google Drive integration</h3>
+          <button class="icon-btn" id="google-setup-close" type="button" title="Close">×</button>
+        </div>
+        <p class="sub">One-time setup. Takes ~10 minutes.</p>
+        <ol class="setup-steps">
+          <li>Go to <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer">Google Cloud Console → APIs &amp; Services → Credentials</a>.</li>
+          <li>Create (or pick) a project. Click <strong>+ Create credentials → OAuth client ID</strong>.</li>
+          <li>Application type: <strong>Web application</strong>.</li>
+          <li>Under <strong>Authorized redirect URIs</strong>, add this exact URL:<br>
+            <code id="google-redirect-uri" class="copy-code">http://localhost:8765/api/google/callback</code></li>
+          <li>Save. Copy the <strong>Client ID</strong> and <strong>Client secret</strong> Google shows.</li>
+          <li>In <strong>APIs &amp; Services → Enabled APIs</strong>, enable <strong>Google Drive API</strong> + <strong>Google Slides API</strong>.</li>
+          <li>Paste the Client ID + Client secret into the form here, click <strong>Save</strong>.</li>
+          <li>Click <strong>Connect Google Drive</strong> and grant access in the Google consent screen.</li>
+        </ol>
+        <div class="row"><button id="google-setup-done" type="button">Got it</button></div>
+      </div>
+    </div>
+
+    </div><!-- /.page-container -->
+
+    <script src="/static/app.js"></script>
+  </body>
+</html>
