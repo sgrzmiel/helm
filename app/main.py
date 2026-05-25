@@ -298,6 +298,7 @@ def _action_counts(key: str) -> tuple[Optional[int], Optional[int]]:
     if not ai_actions and not manual:
         return None, None
     done = overrides.get_done_actions(key) or set()
+    for_user_overrides = overrides.get_action_for_user_overrides(key)
     open_count = 0
     for_user_count = 0
     for a in list(manual) + list(ai_actions):
@@ -305,7 +306,9 @@ def _action_counts(key: str) -> tuple[Optional[int], Optional[int]]:
         if sig in done:
             continue
         open_count += 1
-        if getattr(a, "for_user", False):
+        # Honor manual override of for_user when present
+        for_user = for_user_overrides.get(sig, getattr(a, "for_user", False))
+        if for_user:
             for_user_count += 1
     return open_count, for_user_count
 
@@ -606,6 +609,7 @@ async def list_all_actions() -> ActionsResponse:
         if not ai_actions and not manual:
             continue
         done = overrides.get_done_actions(k) or set()
+        for_user_overrides = overrides.get_action_for_user_overrides(k)
         items: list[ActionItemForList] = []
         # Manual first (mirrors _apply_overrides ordering).
         for idx, a in enumerate(manual):
@@ -613,12 +617,14 @@ async def list_all_actions() -> ActionsResponse:
             sig = overrides.action_signature(a.title, a.detail)
             base["sig"] = sig
             base["done"] = sig in done
+            base["for_user"] = for_user_overrides.get(sig, base.get("for_user", False))
             items.append(ActionItemForList(**base, manual_index=idx))
         for a in ai_actions:
             base = a.model_dump()
             sig = overrides.action_signature(a.title, a.detail)
             base["sig"] = sig
             base["done"] = sig in done
+            base["for_user"] = for_user_overrides.get(sig, base.get("for_user", False))
             items.append(ActionItemForList(**base, manual_index=None))
 
         # Pull summary from the dashboard cache row if we have it; otherwise
@@ -775,18 +781,20 @@ def _apply_overrides(key: str, analysis):
     manual_actions = overrides.get_actions(key)
     dismissed_risks = overrides.get_dismissed_risks(key)
     done_actions = overrides.get_done_actions(key)
+    for_user_overrides = overrides.get_action_for_user_overrides(key)
 
     # Manual actions go first so they're visible above AI-generated ones.
     all_actions = list(manual_actions) + list(analysis.action_items)
     new_actions: list[ActionItem] = []
     for a in all_actions:
         sig = overrides.action_signature(a.title, a.detail)
+        for_user = for_user_overrides.get(sig, a.for_user)
         new_actions.append(ActionItem(
             title=a.title,
             detail=a.detail,
             ticket_keys=a.ticket_keys,
             urgency=a.urgency,
-            for_user=a.for_user,
+            for_user=for_user,
             source=a.source,
             sig=sig,
             done=sig in done_actions,
@@ -1035,6 +1043,25 @@ async def mark_action_done(key: str, sig: str, req: CloseRequest = CloseRequest(
     title, detail = _lookup_item_text(key, "action", sig)
     closure_log.record(key, "action", "close", sig, title, detail, req.reason)
     return {"done": list(overrides.get_done_actions(key))}
+
+
+@app.post("/api/tracked/{key}/actions/{sig}/for-user", dependencies=[Depends(auth.require_auth)])
+async def set_action_for_user_endpoint(key: str, sig: str, body: dict) -> dict:
+    if key not in tracked.list_keys():
+        raise HTTPException(status_code=404, detail=f"{key} is not tracked")
+    for_user = bool(body.get("for_user", False))
+    overrides.set_action_for_user(key, sig, for_user)
+    return {"sig": sig, "for_user": for_user}
+
+
+@app.delete("/api/tracked/{key}/actions/{sig}/for-user", dependencies=[Depends(auth.require_auth)])
+async def clear_action_for_user_endpoint(key: str, sig: str) -> dict:
+    """Clear the manual override so the action falls back to its source flag
+    (AI-determined or original manual value)."""
+    if key not in tracked.list_keys():
+        raise HTTPException(status_code=404, detail=f"{key} is not tracked")
+    overrides.clear_action_for_user(key, sig)
+    return {"ok": True}
 
 
 @app.delete("/api/tracked/{key}/actions/{sig}/done", dependencies=[Depends(auth.require_auth)])

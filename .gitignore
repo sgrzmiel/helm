@@ -17,3 +17,5 @@ __pycache__/
 venv/
 .DS_Store
 *.log
+helm.stdout.log
+helm.stderr.log

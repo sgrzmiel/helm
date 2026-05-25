@@ -157,6 +157,13 @@ CREATE TABLE IF NOT EXISTS epic_actions_done (
     PRIMARY KEY (epic_key, sig)
 );
 
+CREATE TABLE IF NOT EXISTS epic_action_for_user (
+    epic_key  TEXT NOT NULL,
+    sig       TEXT NOT NULL,
+    for_user  INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (epic_key, sig)
+);
+
 CREATE TABLE IF NOT EXISTS analysis_cache (
     epic_key       TEXT PRIMARY KEY,
     analysis_json  TEXT NOT NULL,

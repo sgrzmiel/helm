@@ -1512,8 +1512,10 @@ function renderDetail() {
     if (item.done) {
       actionsHtml = `<button class="link-btn detail-link" data-action="reopen-action" data-sig="${escapeHtml(sig)}">reopen</button>`;
     } else if (sig) {
+      const forMeLabel = item.for_user ? "not for me" : "for me";
       actionsHtml = `
         <button class="link-btn detail-link" data-action="open-close" data-type="action" data-sig="${escapeHtml(sig)}">mark done</button>
+        <button class="link-btn detail-link" data-action="toggle-for-user" data-sig="${escapeHtml(sig)}" data-current="${item.for_user ? "1" : "0"}">${forMeLabel}</button>
         <button class="link-btn detail-link" data-action="open-create-from-item" data-type="action" data-sig="${escapeHtml(sig)}">create ticket</button>
       `;
     }
@@ -1968,6 +1970,8 @@ $("status-detail").addEventListener("click", (e) => {
     removeManualAction(key, +target.dataset.idx);
   } else if (action === "reopen-action") {
     setActionDone(key, target.dataset.sig, false);
+  } else if (action === "toggle-for-user") {
+    toggleActionForUser(key, target.dataset.sig, target.dataset.current !== "1");
   } else if (action === "toggle-done-actions") {
     statusState.showDoneActions = !statusState.showDoneActions;
     renderDetail();
@@ -2175,6 +2179,35 @@ async function confirmCreateFromItem(key, type, sig, sourceIndex) {
     setTimeout(() => banner.remove(), 4000);
   } catch (e) {
     alert(`Create failed: ${e.message}`);
+  }
+}
+
+async function toggleActionForUser(key, sig, newValue) {
+  if (!sig) return;
+  try {
+    const resp = await fetch(
+      `/api/tracked/${encodeURIComponent(key)}/actions/${encodeURIComponent(sig)}/for-user`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ for_user: newValue }),
+      },
+    );
+    if (!resp.ok) throw new Error(resp.statusText);
+    // Patch local detail view
+    if (statusState.detail) {
+      const item = statusState.detail.analysis.action_items.find((x) => x.sig === sig);
+      if (item) item.for_user = newValue;
+    }
+    // Patch local Actions tab if it's loaded
+    for (const g of actionsState.groups) {
+      const item = g.actions.find((x) => x.sig === sig);
+      if (item) item.for_user = newValue;
+    }
+    renderDetail();
+    if (!$("page-actions").classList.contains("hidden")) renderActionsTab();
+  } catch (e) {
+    alert(`Toggle failed: ${e.message}`);
   }
 }
 
@@ -3259,8 +3292,10 @@ function actionListItem(a, epicKey) {
   if (a.done) {
     actionsHtml = `<button class="link-btn detail-link" data-action="actions-reopen" data-epic-key="${escapeHtml(epicKey)}" data-sig="${escapeHtml(sig)}">reopen</button>`;
   } else if (sig) {
+    const forMeLabel = a.for_user ? "not for me" : "for me";
     actionsHtml = `
       <button class="link-btn detail-link" data-action="actions-open-close" data-epic-key="${escapeHtml(epicKey)}" data-sig="${escapeHtml(sig)}">mark done</button>
+      <button class="link-btn detail-link" data-action="actions-toggle-for-user" data-epic-key="${escapeHtml(epicKey)}" data-sig="${escapeHtml(sig)}" data-current="${a.for_user ? "1" : "0"}">${forMeLabel}</button>
       <button class="link-btn detail-link" data-action="actions-create-stub" data-epic-key="${escapeHtml(epicKey)}">+ ticket</button>
     `;
   }
@@ -3323,6 +3358,8 @@ $("page-actions").addEventListener("click", (e) => {
     actionsRemoveManual(epicKey, +target.dataset.idx);
   } else if (a === "actions-create-stub") {
     createStubTicket(epicKey, target);
+  } else if (a === "actions-toggle-for-user") {
+    toggleActionForUser(epicKey, target.dataset.sig, target.dataset.current !== "1");
   } else if (a === "trigger-warmup") {
     triggerWarmupManually();
   }

@@ -167,6 +167,31 @@ def get_done_actions(key: str) -> set[str]:
     return {r["sig"] for r in rows}
 
 
+# Per-action `for_user` overrides. Lets the user manually flip whether an
+# action belongs to them - useful when the LLM gets it wrong or when a manual
+# action's flag needs to change.
+
+def get_action_for_user_overrides(key: str) -> dict[str, bool]:
+    rows = _qa("SELECT sig, for_user FROM epic_action_for_user WHERE epic_key = ?", (key,))
+    return {r["sig"]: bool(r["for_user"]) for r in rows}
+
+
+def set_action_for_user(key: str, sig: str, for_user: bool) -> bool:
+    _q(
+        """INSERT INTO epic_action_for_user(epic_key, sig, for_user) VALUES (?, ?, ?)
+           ON CONFLICT(epic_key, sig) DO UPDATE SET for_user = excluded.for_user""",
+        (key, sig, 1 if for_user else 0),
+    )
+    return for_user
+
+
+def clear_action_for_user(key: str, sig: str) -> None:
+    _q(
+        "DELETE FROM epic_action_for_user WHERE epic_key = ? AND sig = ?",
+        (key, sig),
+    )
+
+
 def mark_action_done(key: str, sig: str) -> set[str]:
     _q("INSERT OR IGNORE INTO epic_actions_done(epic_key, sig) VALUES (?, ?)", (key, sig))
     return get_done_actions(key)
