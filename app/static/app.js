@@ -2096,6 +2096,9 @@ async function confirmClose(key, type, sig) {
     }
     statusState.openClosure = null;
     renderDetail();
+    // Refresh dashboard chips when an action is closed - risks/gaps don't
+    // affect dashboard counts, only actions do.
+    if (type === "action") refreshOneRow(key).catch(() => {});
   } catch (e) {
     alert(`Close failed: ${e.message}`);
   }
@@ -2206,6 +2209,8 @@ async function toggleActionForUser(key, sig, newValue) {
     }
     renderDetail();
     if (!$("page-actions").classList.contains("hidden")) renderActionsTab();
+    // Keep the dashboard chip count in sync.
+    refreshOneRow(key).catch(() => {});
   } catch (e) {
     alert(`Toggle failed: ${e.message}`);
   }
@@ -2222,6 +2227,8 @@ async function setActionDone(key, sig, done) {
     const item = items.find((x) => x.sig === sig);
     if (item) item.done = done;
     renderDetail();
+    // Refresh dashboard summary chips so "N actions" / "N for you" stay accurate.
+    refreshOneRow(key).catch(() => {});
   } catch (e) {
     alert(`Update failed: ${e.message}`);
   }
