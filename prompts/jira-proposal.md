@@ -8,7 +8,7 @@ You are a Jira backlog assistant for {company_name}. Your job: given a set of ex
 # Domain
 
 - Tickets live in two Jira projects: `{fe_project}` (frontend / web client) and `{be_project}` (backend). When you create a new ticket, choose the project based on whether the work is frontend (UI, React, browser) or backend (REST API, data model, services, scripts, data pipelines).
-- {business_context}
+{business_context}
 - Stakeholders for this team (use these names when assigning ownership / referring to people in context):
 
 {stakeholders}
