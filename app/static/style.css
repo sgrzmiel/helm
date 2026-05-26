@@ -317,6 +317,7 @@ a:hover { color: var(--color-primary-hover); }
   padding: 4px 10px;
   border-radius: var(--radius-pill);
   background: var(--k-grey-100);
+  color: var(--color-text);
   cursor: pointer;
   font-size: var(--fs-body3);
   font-weight: 700;
@@ -325,10 +326,17 @@ a:hover { color: var(--color-primary-hover); }
   user-select: none;
 }
 .segment-toggle input { margin: 0; accent-color: var(--color-primary); }
-.segment-toggle.segment-business:has(input:checked) { background: var(--k-blue-light); color: var(--k-blue-dark); }
-.segment-toggle.segment-school:has(input:checked) { background: var(--k-green-light); color: var(--k-green-dark); }
-.segment-toggle.segment-home:has(input:checked) { background: var(--k-orange-light); color: var(--k-orange-dark); }
-.segment-toggle.segment-students:has(input:checked) { background: var(--k-purple-light); color: white; }
+/* Color variants apply both to <label>-with-checkbox form (metadata editor)
+   and to <button class="segment-toggle active"> form (PPR filter). */
+.segment-toggle.segment-business:has(input:checked),
+.segment-toggle.segment-business.active { background: var(--k-blue-light); color: var(--k-blue-dark); }
+.segment-toggle.segment-school:has(input:checked),
+.segment-toggle.segment-school.active { background: var(--k-green-light); color: var(--k-green-dark); }
+.segment-toggle.segment-home:has(input:checked),
+.segment-toggle.segment-home.active { background: var(--k-orange-light); color: var(--k-orange-dark); }
+.segment-toggle.segment-students:has(input:checked),
+.segment-toggle.segment-students.active { background: var(--k-purple-light); color: white; }
+.segment-toggle.segment-any.active { background: var(--k-grey-300); color: var(--color-text); }
 .modal-head { display: flex; justify-content: space-between; align-items: center; }
 .modal-grid {
   display: flex;
