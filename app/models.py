@@ -451,16 +451,22 @@ class ActionsResponse(BaseModel):
 
 
 PPRStage = Literal["preparation", "development", "recently_completed"]
+PPRKind = Literal["project", "idea"]
+PPRSegmentBucket = Literal["business", "school", "home", "students", "other"]
 
 
 class PPRProject(BaseModel):
+    kind: PPRKind = "project"
+    stage: PPRStage = "development"
     key: str
     summary: str
-    progress_pct: int
-    counts: StatusCounts
+    progress_pct: int = 0
+    counts: StatusCounts = Field(default_factory=StatusCounts)
     duedate: Optional[str] = None
     segments: list[Segment] = Field(default_factory=list)
     assessment: Optional[str] = None
+    stakeholder: Optional[str] = None
+    one_pager_url: Optional[str] = None
     stakeholder_summary: Optional[str] = Field(
         default=None,
         description="Short stakeholder-facing summary. Prefers EpicAnalysis.stakeholder_summary; falls back to the first sentence of state_of_play; None if no analysis cached yet.",
@@ -468,7 +474,7 @@ class PPRProject(BaseModel):
 
 
 class PPRGroup(BaseModel):
-    stage: PPRStage
+    segment: PPRSegmentBucket
     label: str
     projects: list[PPRProject]
 

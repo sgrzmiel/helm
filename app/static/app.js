@@ -3561,14 +3561,12 @@ function renderPPR() {
   const host = $("ppr-list");
   const filter = pprState.segmentFilter;
 
-  // Filter projects by segment within each group
-  const filtered = pprState.groups.map((g) => {
-    const projects = (g.projects || []).filter((p) => filter === "all" || (p.segments || []).includes(filter));
-    return { ...g, _projects: projects };
-  });
+  const visibleGroups = filter === "all"
+    ? pprState.groups
+    : pprState.groups.filter((g) => g.segment === filter);
 
-  const totalShown = filtered.reduce((acc, g) => acc + g._projects.length, 0);
-  const totalAll = pprState.groups.reduce((acc, g) => acc + g.projects.length, 0);
+  const totalShown = visibleGroups.reduce((acc, g) => acc + (g.projects || []).length, 0);
+  const totalAll = pprState.groups.reduce((acc, g) => acc + (g.projects || []).length, 0);
 
   if (totalAll === 0) {
     host.innerHTML = `<p class="empty-state">No tracked projects yet. Add some on the Projects Dashboard.</p>`;
@@ -3576,13 +3574,18 @@ function renderPPR() {
   }
 
   host.innerHTML = `
-    <div class="actions-meta-line">Showing ${totalShown} of ${totalAll} projects${filter !== "all" ? ` (segment: ${escapeHtml(filter)})` : ""}</div>
-    ${filtered.map(pprGroupHtml).join("")}
+    <div class="actions-meta-line">Showing ${totalShown} of ${totalAll} items${filter !== "all" ? ` (segment: ${escapeHtml(filter)})` : ""}</div>
+    ${visibleGroups.map(pprGroupHtml).join("")}
   `;
 }
 
 function renderPPRSegmentFilter() {
-  const SEGMENTS = ["all", "business", "school", "home", "students"];
+  // Build filter options from groups present in the response so we don't
+  // show buttons for empty segments.
+  const present = new Set(pprState.groups.map((g) => g.segment));
+  const SEGMENTS = ["all", "business", "school", "home", "students", "other"].filter(
+    (s) => s === "all" || present.has(s),
+  );
   $("ppr-segment-filter").innerHTML = SEGMENTS.map((s) => `
     <button type="button"
             class="segment-toggle segment-${s === "all" ? "any" : s} ${pprState.segmentFilter === s ? "active" : ""}"
@@ -3593,51 +3596,54 @@ function renderPPRSegmentFilter() {
 }
 
 function pprGroupHtml(g) {
-  if (!g._projects.length) {
-    return `
-      <div class="ppr-group">
-        <div class="ppr-group-head ppr-stage-${escapeHtml(g.stage)}">
-          <h3>${escapeHtml(g.label)}</h3>
-          <span class="count">0</span>
-        </div>
-        <p class="empty-state">No projects in this bucket.</p>
-      </div>
-    `;
-  }
+  const items = g.projects || [];
   return `
-    <div class="ppr-group">
-      <div class="ppr-group-head ppr-stage-${escapeHtml(g.stage)}">
+    <div class="ppr-group ppr-segment-${escapeHtml(g.segment)}">
+      <div class="ppr-group-head">
         <h3>${escapeHtml(g.label)}</h3>
-        <span class="count">${g._projects.length}</span>
+        <span class="count">${items.length}</span>
       </div>
-      <div class="ppr-cards">
-        ${g._projects.map(pprProjectCard).join("")}
-      </div>
+      ${items.length === 0
+        ? '<p class="empty-state">Nothing here yet.</p>'
+        : `<div class="ppr-rows">${items.map(pprRow).join("")}</div>`}
     </div>
   `;
 }
 
-function pprProjectCard(p) {
+const PPR_STAGE_LABEL = {
+  preparation: "in preparation",
+  development: "in development",
+  recently_completed: "recently completed",
+};
+
+function pprRow(p) {
   const counts = p.counts || {};
-  const total = counts.total || 1;
-  const donePct = (counts.done / total) * 100;
-  const ipPct = (counts.in_progress / total) * 100;
-  const tdPct = (counts.to_do / total) * 100;
+  const total = counts.total || 0;
+  const donePct = total ? (counts.done / total) * 100 : 0;
+  const ipPct = total ? (counts.in_progress / total) * 100 : 0;
+  const tdPct = total ? (counts.to_do / total) * 100 : 0;
+  const isIdea = p.kind === "idea";
+  const stageLabel = isIdea ? "idea (queued)" : (PPR_STAGE_LABEL[p.stage] || p.stage);
+  const summaryText = p.stakeholder_summary
+    || (isIdea ? "(no notes yet)" : "(no AI analysis yet - open the project on Projects Dashboard to generate one, or click Refresh analysis)");
   return `
-    <div class="ppr-card">
-      <div class="ppr-card-head">
-        <span class="key">${escapeHtml(p.key)}</span>
-        ${jiraLinkIcon(p.key, p.summary)}
+    <div class="ppr-row ppr-row-${isIdea ? "idea" : "project"}">
+      <div class="ppr-row-head">
+        <span class="ppr-stage-badge ppr-stage-${escapeHtml(p.stage)}">${escapeHtml(stageLabel)}</span>
+        ${isIdea ? "" : `<span class="key">${escapeHtml(p.key)}</span>${jiraLinkIcon(p.key, p.summary)}`}
+        <span class="ppr-row-title">${escapeHtml(p.summary)}</span>
         ${p.assessment ? `<span class="assessment assessment-${p.assessment}">${escapeHtml(p.assessment)}</span>` : ""}
-        <span class="ppr-progress">${p.progress_pct}%</span>
+        ${!isIdea && total ? `<span class="ppr-progress">${p.progress_pct}%</span>` : ""}
+        ${p.stakeholder ? `<span class="idea-stakeholder">${escapeHtml(p.stakeholder)}</span>` : ""}
+        ${p.one_pager_url ? `<a class="idea-onepager" href="${escapeHtml(p.one_pager_url)}" target="_blank" rel="noopener noreferrer">one-pager ↗</a>` : ""}
       </div>
-      <div class="ppr-title">${escapeHtml(p.summary)}</div>
-      <div class="ppr-summary">${escapeHtml(p.stakeholder_summary || "(no AI analysis yet - open the project on Projects Dashboard to generate one, or click Refresh analysis)")}</div>
-      <div class="progress-bar">
-        ${donePct > 0 ? `<div class="done" style="width:${donePct}%"></div>` : ""}
-        ${ipPct > 0 ? `<div class="in-progress" style="width:${ipPct}%"></div>` : ""}
-        ${tdPct > 0 ? `<div class="to-do" style="width:${tdPct}%"></div>` : ""}
-      </div>
+      <div class="ppr-row-summary">${escapeHtml(summaryText)}</div>
+      ${!isIdea && total ? `
+        <div class="progress-bar">
+          ${donePct > 0 ? `<div class="done" style="width:${donePct}%"></div>` : ""}
+          ${ipPct > 0 ? `<div class="in-progress" style="width:${ipPct}%"></div>` : ""}
+          ${tdPct > 0 ? `<div class="to-do" style="width:${tdPct}%"></div>` : ""}
+        </div>` : ""}
       ${(p.segments || []).length ? `<div class="ppr-segments">${p.segments.map((s) => `<span class="segment-chip segment-${escapeHtml(s)}">${escapeHtml(s)}</span>`).join("")}</div>` : ""}
     </div>
   `;

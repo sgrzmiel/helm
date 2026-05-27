@@ -455,34 +455,61 @@ async def get_ppr(recent_days: int = 60) -> PPRResponse:
     now = datetime.now(timezone.utc)
     cutoff = now - timedelta(days=recent_days)
 
-    buckets: dict[str, list[PPRProject]] = {
-        "preparation": [],
-        "development": [],
-        "recently_completed": [],
+    # Group by segment (business/school/home/students/other). Items inside a
+    # group are a mix of tracked projects and queued ideas, each carrying
+    # their own lifecycle stage so the UI can render a stage badge.
+    SEGMENT_ORDER: list[str] = ["business", "school", "home", "students", "other"]
+    SEGMENT_LABELS: dict[str, str] = {
+        "business": "Business",
+        "school": "School",
+        "home": "Home",
+        "students": "Students",
+        "other": "Other / unsegmented",
     }
+    buckets: dict[str, list[PPRProject]] = {s: [] for s in SEGMENT_ORDER}
 
+    def primary_segment(segments: list[str]) -> str:
+        # "Most matching" isn't something we can infer cheaply, so take the
+        # first declared segment - that's the editor's natural ordering.
+        return segments[0] if segments else "other"
+
+    # --- tracked projects ---
     for key in tracked.list_keys():
         row = _DASHBOARD_CACHE.get(key)
         if row is None:
-            # No fetched data for this epic - skip; user can hit Refresh all to populate.
             continue
 
-        # Stakeholder summary: prefer the dedicated field, fall back to first
-        # 1-2 sentences of state_of_play. None when no analysis is cached.
         stakeholder_summary: Optional[str] = None
         cached = cached_analysis(key)
         if cached:
             analysis = cached[0]
             stakeholder_summary = (analysis.stakeholder_summary or "").strip() or None
             if not stakeholder_summary and analysis.state_of_play:
-                # Crude sentence split - good enough for a fallback.
                 sentences = re.split(r"(?<=[.!?])\s+", analysis.state_of_play.strip())
                 stakeholder_summary = " ".join(sentences[:2]).strip()
 
         meta = row.metadata
         segments = list(meta.segments) if (meta and meta.segments) else []
 
+        cat = row.status_category
+        if cat == "done":
+            include = True
+            if row.last_synced:
+                try:
+                    include = datetime.fromisoformat(row.last_synced) >= cutoff
+                except ValueError:
+                    include = True
+            if not include:
+                continue
+            stage: PPRStage = "recently_completed"
+        elif cat == "indeterminate":
+            stage = "development"
+        else:
+            stage = "preparation"
+
         proj = PPRProject(
+            kind="project",
+            stage=stage,
             key=row.key,
             summary=row.summary,
             progress_pct=row.progress_pct,
@@ -490,31 +517,42 @@ async def get_ppr(recent_days: int = 60) -> PPRResponse:
             duedate=row.duedate,
             segments=segments,
             assessment=row.assessment,
+            stakeholder=(meta.stakeholder if meta else None),
+            one_pager_url=(meta.one_pager_url if meta else None),
             stakeholder_summary=stakeholder_summary,
         )
+        buckets[primary_segment(segments)].append(proj)
 
-        cat = row.status_category
-        if cat == "done":
-            # Only include recently-completed; older done epics fall off.
-            if row.last_synced:
-                try:
-                    synced = datetime.fromisoformat(row.last_synced)
-                    if synced >= cutoff:
-                        buckets["recently_completed"].append(proj)
-                except ValueError:
-                    buckets["recently_completed"].append(proj)
-            else:
-                buckets["recently_completed"].append(proj)
-        elif cat == "indeterminate":
-            buckets["development"].append(proj)
-        else:
-            # status_category "new" or "unknown" -> still in preparation
-            buckets["preparation"].append(proj)
+    # --- queued ideas shown as "in preparation" ---
+    for idea in ideas_store.list_ideas():
+        if idea.status != "queued":
+            continue
+        item = PPRProject(
+            kind="idea",
+            stage="preparation",
+            key=idea.id,
+            summary=idea.title,
+            progress_pct=0,
+            counts=StatusCounts(),
+            duedate=None,
+            segments=[],
+            assessment=None,
+            stakeholder=idea.stakeholder,
+            one_pager_url=idea.one_pager_url,
+            stakeholder_summary=(idea.notes or "").strip() or None,
+        )
+        buckets["other"].append(item)
 
-    groups: list[PPRGroup] = [
-        PPRGroup(stage="preparation", label="In preparation", projects=buckets["preparation"]),
-        PPRGroup(stage="development", label="In development", projects=buckets["development"]),
-        PPRGroup(stage="recently_completed", label=f"Recently completed (last {recent_days}d)", projects=buckets["recently_completed"]),
+    # Sort each segment bucket: in development > in preparation > recently
+    # completed; tie-break by progress desc so the most-active sits on top.
+    stage_rank = {"development": 0, "preparation": 1, "recently_completed": 2}
+    for items in buckets.values():
+        items.sort(key=lambda p: (stage_rank.get(p.stage, 99), -p.progress_pct))
+
+    groups = [
+        PPRGroup(segment=s, label=SEGMENT_LABELS[s], projects=buckets[s])
+        for s in SEGMENT_ORDER
+        if buckets[s]
     ]
     return PPRResponse(groups=groups, recent_window_days=recent_days)
 
