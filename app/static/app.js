@@ -3564,7 +3564,9 @@ async function actionsRemoveManual(epicKey, index) {
 const pprState = {
   groups: [],
   recent_window_days: 60,
-  segmentFilter: "all",  // "all" | "business" | "school" | "home" | "students"
+  segmentFilter: "all",  // "all" | "business" | "school" | "home" | "students" | "internal"
+  editing: null,         // `${kind}:${key}` of the row currently being edited
+  editDraft: null,       // textarea content held across re-renders
 };
 
 async function loadPPR() {
@@ -3651,20 +3653,23 @@ function pprRow(p) {
   const tdPct = total ? (counts.to_do / total) * 100 : 0;
   const isIdea = p.kind === "idea";
   const stageLabel = isIdea ? "in preparation for dev" : (PPR_STAGE_LABEL[p.stage] || p.stage);
+  const editingKey = `${p.kind}:${p.key}`;
+  const isEditing = pprState.editing === editingKey;
   const summaryText = p.stakeholder_summary
     || (isIdea ? "(no notes yet)" : "(no AI analysis yet - open the project on Projects Dashboard to generate one, or click Refresh analysis)");
   return `
-    <div class="ppr-row ppr-row-${isIdea ? "idea" : "project"}">
+    <div class="ppr-row ppr-row-${isIdea ? "idea" : "project"}" data-kind="${p.kind}" data-key="${escapeHtml(p.key)}">
       <div class="ppr-row-head">
         <span class="ppr-stage-badge ppr-stage-${escapeHtml(p.stage)}">${escapeHtml(stageLabel)}</span>
         ${isIdea ? "" : `<span class="key">${escapeHtml(p.key)}</span>${jiraLinkIcon(p.key, p.summary)}`}
         <span class="ppr-row-title">${escapeHtml(p.summary)}</span>
-        ${p.assessment ? `<span class="assessment assessment-${p.assessment}">${escapeHtml(p.assessment)}</span>` : ""}
         ${!isIdea && total ? `<span class="ppr-progress">${p.progress_pct}%</span>` : ""}
-        ${p.stakeholder ? `<span class="idea-stakeholder">${escapeHtml(p.stakeholder)}</span>` : ""}
         ${p.one_pager_url ? `<a class="idea-onepager" href="${escapeHtml(p.one_pager_url)}" target="_blank" rel="noopener noreferrer">one-pager ↗</a>` : ""}
+        ${isEditing ? "" : `<button class="link-btn detail-link" data-action="ppr-edit-summary" data-kind="${p.kind}" data-key="${escapeHtml(p.key)}">edit summary</button>`}
       </div>
-      <div class="ppr-row-summary">${escapeHtml(summaryText)}</div>
+      ${isEditing
+        ? pprSummaryEditor(p, summaryText)
+        : `<div class="ppr-row-summary">${escapeHtml(summaryText)}</div>`}
       ${!isIdea && total ? `
         <div class="progress-bar">
           ${donePct > 0 ? `<div class="done" style="width:${donePct}%"></div>` : ""}
@@ -3676,14 +3681,166 @@ function pprRow(p) {
   `;
 }
 
+function pprSummaryEditor(p, currentText) {
+  const draft = pprState.editDraft != null ? pprState.editDraft : (p.stakeholder_summary || "");
+  return `
+    <div class="ppr-summary-editor">
+      <textarea data-action="ppr-summary-input" rows="3" placeholder="1-2 sentences, executive-level">${escapeHtml(draft)}</textarea>
+      <div class="ppr-refine-row">
+        <input type="text" data-action="ppr-refine-input" placeholder="Optional: how should AI rewrite it? e.g. 'shorter, focus on outcomes'" />
+        <button class="secondary" data-action="ppr-refine" data-kind="${p.kind}" data-key="${escapeHtml(p.key)}">Refine with AI</button>
+      </div>
+      <div class="form-actions">
+        <button data-action="ppr-save-summary" data-kind="${p.kind}" data-key="${escapeHtml(p.key)}">Save</button>
+        <button class="secondary" data-action="ppr-cancel-summary">Cancel</button>
+        <button class="danger" data-action="ppr-clear-summary" data-kind="${p.kind}" data-key="${escapeHtml(p.key)}">Reset to default</button>
+        <span class="status" data-role="ppr-edit-status"></span>
+      </div>
+    </div>
+  `;
+}
+
 $("page-ppr").addEventListener("click", (e) => {
   const target = e.target.closest("[data-action]");
   if (!target) return;
-  if (target.dataset.action === "ppr-set-segment") {
+  const action = target.dataset.action;
+  if (action === "ppr-set-segment") {
     pprState.segmentFilter = target.dataset.segment;
     renderPPR();
+  } else if (action === "ppr-edit-summary") {
+    pprState.editing = `${target.dataset.kind}:${target.dataset.key}`;
+    pprState.editDraft = null;
+    renderPPR();
+  } else if (action === "ppr-cancel-summary") {
+    pprState.editing = null;
+    pprState.editDraft = null;
+    renderPPR();
+  } else if (action === "ppr-save-summary") {
+    savePPRSummary(target.dataset.kind, target.dataset.key);
+  } else if (action === "ppr-clear-summary") {
+    savePPRSummary(target.dataset.kind, target.dataset.key, "");
+  } else if (action === "ppr-refine") {
+    refinePPRSummary(target.dataset.kind, target.dataset.key);
+  } else if (action === "ppr-copy-for-slides") {
+    copyPPRForSlides(target);
   }
 });
+
+async function copyPPRForSlides(btn) {
+  const filter = pprState.segmentFilter;
+  const visibleGroups = filter === "all"
+    ? pprState.groups
+    : pprState.groups.filter((g) => g.segment === filter);
+
+  // Build both rich HTML (preserves headings + bold) and a plain-text fallback.
+  const html = visibleGroups.map((g) => {
+    const items = (g.projects || []).map((p) => {
+      const isIdea = p.kind === "idea";
+      const stageLabel = isIdea ? "in preparation for dev" : (PPR_STAGE_LABEL[p.stage] || p.stage);
+      const titlePart = isIdea ? p.summary : `${p.key} - ${p.summary}`;
+      const pctPart = !isIdea && (p.counts?.total || 0) ? ` (${p.progress_pct}%)` : "";
+      const summary = p.stakeholder_summary || "";
+      return `<li><b>[${stageLabel}] ${escapeHtml(titlePart)}${pctPart}</b><br>${escapeHtml(summary)}</li>`;
+    }).join("");
+    return `<h3>${escapeHtml(g.label)}</h3><ul>${items}</ul>`;
+  }).join("");
+
+  const plain = visibleGroups.map((g) => {
+    const items = (g.projects || []).map((p) => {
+      const isIdea = p.kind === "idea";
+      const stageLabel = isIdea ? "in preparation for dev" : (PPR_STAGE_LABEL[p.stage] || p.stage);
+      const titlePart = isIdea ? p.summary : `${p.key} - ${p.summary}`;
+      const pctPart = !isIdea && (p.counts?.total || 0) ? ` (${p.progress_pct}%)` : "";
+      const summary = p.stakeholder_summary || "";
+      return `• [${stageLabel}] ${titlePart}${pctPart}\n  ${summary}`;
+    }).join("\n");
+    return `${g.label}\n${items}`;
+  }).join("\n\n");
+
+  try {
+    if (window.ClipboardItem && navigator.clipboard?.write) {
+      await navigator.clipboard.write([new ClipboardItem({
+        "text/html": new Blob([html], { type: "text/html" }),
+        "text/plain": new Blob([plain], { type: "text/plain" }),
+      })]);
+    } else {
+      await navigator.clipboard.writeText(plain);
+    }
+    const original = btn.textContent;
+    btn.textContent = "Copied ✓";
+    setTimeout(() => { btn.textContent = original; }, 1500);
+  } catch (e) {
+    alert(`Copy failed: ${e.message}`);
+  }
+}
+
+$("page-ppr").addEventListener("input", (e) => {
+  if (e.target.dataset?.action === "ppr-summary-input") {
+    pprState.editDraft = e.target.value;
+  }
+});
+
+function _pprDraftText() {
+  const ta = document.querySelector('[data-action="ppr-summary-input"]');
+  return ta ? ta.value : (pprState.editDraft || "");
+}
+
+function _pprRefineInstruction() {
+  const inp = document.querySelector('[data-action="ppr-refine-input"]');
+  return inp ? inp.value.trim() : "";
+}
+
+function _pprEditStatus(text, isError) {
+  const el = document.querySelector('[data-role="ppr-edit-status"]');
+  if (!el) return;
+  el.textContent = text || "";
+  el.className = `status${isError ? " error" : ""}`;
+}
+
+async function savePPRSummary(kind, key, override) {
+  const summary = override !== undefined ? override : _pprDraftText();
+  _pprEditStatus("saving…", false);
+  try {
+    const resp = await fetch("/api/ppr/summary", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ kind, key, summary }),
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({ detail: resp.statusText }));
+      throw new Error(err.detail || resp.statusText);
+    }
+    pprState.editing = null;
+    pprState.editDraft = null;
+    await loadPPR();
+  } catch (e) {
+    _pprEditStatus(`error: ${e.message}`, true);
+  }
+}
+
+async function refinePPRSummary(kind, key) {
+  const currentText = _pprDraftText();
+  const instruction = _pprRefineInstruction();
+  _pprEditStatus("asking Claude…", false);
+  try {
+    const resp = await fetch("/api/ppr/refine-summary", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ kind, key, current_text: currentText, instruction }),
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({ detail: resp.statusText }));
+      throw new Error(err.detail || resp.statusText);
+    }
+    const data = await resp.json();
+    pprState.editDraft = data.suggested || "";
+    _pprEditStatus("refined - review and save if you're happy", false);
+    // Re-render so the textarea picks up the new draft
+    renderPPR();
+  } catch (e) {
+    _pprEditStatus(`error: ${e.message}`, true);
+  }
+}
 
 // Kick off auth check on load - sets the body data-auth attribute before
 // pages render, so anon users see read-only mode without a flash.

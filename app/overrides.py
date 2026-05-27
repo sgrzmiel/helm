@@ -228,12 +228,17 @@ def _row_to_meta_dict(row) -> dict[str, Any]:
            FROM epic_metadata_documents WHERE epic_key = ? ORDER BY position ASC""",
         (row["epic_key"],),
     )
+    try:
+        summary = row["ppr_summary"]
+    except (KeyError, IndexError):
+        summary = None
     return {
         "one_pager_url": row["one_pager_url"],
         "stakeholder": row["stakeholder"],
         "idea_id": row["idea_id"],
         "segments": json.loads(row["segments_json"] or "[]"),
         "documents": [dict(d) for d in docs],
+        "ppr_summary": summary,
     }
 
 
@@ -255,7 +260,7 @@ def _backfill_metadata_docs(meta: dict[str, Any]) -> dict[str, Any]:
 
 def get_metadata(key: str) -> dict[str, Any]:
     row = _qone(
-        """SELECT epic_key, one_pager_url, stakeholder, idea_id, segments_json
+        """SELECT epic_key, one_pager_url, stakeholder, idea_id, segments_json, ppr_summary
            FROM epic_metadata WHERE epic_key = ?""",
         (key,),
     )
@@ -287,7 +292,7 @@ def set_metadata(key: str, fields: dict[str, Any]) -> dict[str, Any]:
             _q("UPDATE epic_metadata SET segments_json = ? WHERE epic_key = ?",
                (json.dumps(list(v)), key))
             continue
-        if k not in ("one_pager_url", "stakeholder", "idea_id"):
+        if k not in ("one_pager_url", "stakeholder", "idea_id", "ppr_summary"):
             continue
         if v == "":
             _q(f"UPDATE epic_metadata SET {k} = NULL WHERE epic_key = ?", (key,))

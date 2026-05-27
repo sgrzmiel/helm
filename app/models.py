@@ -223,6 +223,7 @@ class Idea(BaseModel):
     promoted_epic_key: Optional[str] = None  # set when promoted via /promote
     documents: list[Document] = Field(default_factory=list)
     segments: list["Segment"] = Field(default_factory=list)
+    ppr_summary: Optional[str] = None
 
 
 class IdeasResponse(BaseModel):
@@ -255,6 +256,7 @@ class UpdateIdeaRequest(BaseModel):
     promoted_epic_key: Optional[str] = None
     documents: Optional[list[DocumentInput]] = None
     segments: Optional[list["Segment"]] = None
+    ppr_summary: Optional[str] = None
 
 
 class ReorderEntry(BaseModel):
@@ -340,6 +342,10 @@ class EpicMetadata(BaseModel):
     segments: list[Segment] = Field(
         default_factory=list,
         description="Which audience segments will benefit. Multi-select: business, school, home, students.",
+    )
+    ppr_summary: Optional[str] = Field(
+        default=None,
+        description="User-edited stakeholder summary for the PPR view. When set, overrides the LLM-generated stakeholder_summary.",
     )
 
 
@@ -485,6 +491,23 @@ class PPRGroup(BaseModel):
 class PPRResponse(BaseModel):
     groups: list[PPRGroup]
     recent_window_days: int = 60
+
+
+class PPRSummaryUpdate(BaseModel):
+    kind: PPRKind
+    key: str  # epic key or idea id
+    summary: Optional[str] = Field(default=None, description="New stakeholder summary; null/empty clears the override.")
+
+
+class PPRRefineRequest(BaseModel):
+    kind: PPRKind
+    key: str
+    current_text: str = ""
+    instruction: str = Field(default="", description="What should the rewrite change? Free-form, e.g. 'shorter, focus on business outcomes'.")
+
+
+class PPRRefineResponse(BaseModel):
+    suggested: str
 
 
 # ---------------------------------------------------------------------------

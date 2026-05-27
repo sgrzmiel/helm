@@ -21,6 +21,7 @@ from .llm import (  # noqa: E402
     build_proposal,
     cached_analysis,
     clear_analysis_cache,
+    refine_ppr_summary,
     generate_slack_reply,
 )
 from .models import (  # noqa: E402
@@ -30,7 +31,10 @@ from .models import (  # noqa: E402
     ActionsResponse,
     PPRGroup,
     PPRProject,
+    PPRRefineRequest,
+    PPRRefineResponse,
     PPRResponse,
+    PPRSummaryUpdate,
     AddActionRequest,
     ApplyOutcome,
     ApplyRequest,
@@ -481,17 +485,22 @@ async def get_ppr(recent_days: int = 60) -> PPRResponse:
         if row is None:
             continue
 
-        stakeholder_summary: Optional[str] = None
-        cached = cached_analysis(key)
-        if cached:
-            analysis = cached[0]
-            stakeholder_summary = (analysis.stakeholder_summary or "").strip() or None
-            if not stakeholder_summary and analysis.state_of_play:
-                sentences = re.split(r"(?<=[.!?])\s+", analysis.state_of_play.strip())
-                stakeholder_summary = " ".join(sentences[:2]).strip()
+        # Always read metadata fresh - the dashboard cache may hold a stale
+        # row from before the user edited the PPR summary or segments.
+        meta_dict = overrides.get_metadata(key)
+        segments = list(meta_dict.get("segments") or [])
 
-        meta = row.metadata
-        segments = list(meta.segments) if (meta and meta.segments) else []
+        # User-edited override wins; otherwise prefer the LLM stakeholder
+        # summary; fall back to the first 1-2 sentences of state_of_play.
+        stakeholder_summary: Optional[str] = (meta_dict.get("ppr_summary") or "").strip() or None
+        if not stakeholder_summary:
+            cached = cached_analysis(key)
+            if cached:
+                analysis = cached[0]
+                stakeholder_summary = (analysis.stakeholder_summary or "").strip() or None
+                if not stakeholder_summary and analysis.state_of_play:
+                    sentences = re.split(r"(?<=[.!?])\s+", analysis.state_of_play.strip())
+                    stakeholder_summary = " ".join(sentences[:2]).strip()
 
         cat = row.status_category
         if cat == "done":
@@ -519,8 +528,8 @@ async def get_ppr(recent_days: int = 60) -> PPRResponse:
             duedate=row.duedate,
             segments=segments,
             assessment=row.assessment,
-            stakeholder=(meta.stakeholder if meta else None),
-            one_pager_url=(meta.one_pager_url if meta else None),
+            stakeholder=meta_dict.get("stakeholder"),
+            one_pager_url=meta_dict.get("one_pager_url"),
             stakeholder_summary=stakeholder_summary,
         )
         buckets[primary_segment(segments)].append(proj)
@@ -530,6 +539,7 @@ async def get_ppr(recent_days: int = 60) -> PPRResponse:
         if idea.status != "queued":
             continue
         idea_segments = list(idea.segments or [])
+        summary_text = (idea.ppr_summary or "").strip() or (idea.notes or "").strip() or None
         item = PPRProject(
             kind="idea",
             stage="preparation",
@@ -542,7 +552,7 @@ async def get_ppr(recent_days: int = 60) -> PPRResponse:
             assessment=None,
             stakeholder=idea.stakeholder,
             one_pager_url=idea.one_pager_url,
-            stakeholder_summary=(idea.notes or "").strip() or None,
+            stakeholder_summary=summary_text,
         )
         buckets[primary_segment(idea_segments)].append(item)
 
@@ -558,6 +568,51 @@ async def get_ppr(recent_days: int = 60) -> PPRResponse:
         if buckets[s]
     ]
     return PPRResponse(groups=groups, recent_window_days=recent_days)
+
+
+@app.patch("/api/ppr/summary", dependencies=[Depends(auth.require_auth)])
+async def update_ppr_summary(req: PPRSummaryUpdate) -> dict:
+    """Persist a user-edited stakeholder summary. Empty / None clears it."""
+    new_text = (req.summary or "").strip() or None
+    if req.kind == "project":
+        if req.key not in tracked.list_keys():
+            raise HTTPException(status_code=404, detail=f"epic {req.key} not tracked")
+        overrides.set_metadata(req.key, {"ppr_summary": new_text or ""})
+        return {"kind": "project", "key": req.key, "summary": new_text}
+    # idea
+    updated = await ideas_store.update(req.key, {"ppr_summary": new_text or ""})
+    if updated is None:
+        raise HTTPException(status_code=404, detail=f"idea {req.key} not found")
+    return {"kind": "idea", "key": req.key, "summary": updated.ppr_summary}
+
+
+@app.post("/api/ppr/refine-summary", response_model=PPRRefineResponse, dependencies=[Depends(auth.require_auth)])
+async def refine_summary(req: PPRRefineRequest) -> PPRRefineResponse:
+    """Ask the LLM to rewrite the stakeholder summary per a user instruction."""
+    _require_credentials("ANTHROPIC_API_KEY")
+    # Gather title + a bit of extra context the LLM can latch onto.
+    title = ""
+    extra_context = ""
+    if req.kind == "project":
+        row = _DASHBOARD_CACHE.get(req.key)
+        title = row.summary if row else req.key
+        cached = cached_analysis(req.key)
+        if cached:
+            extra_context = (cached[0].state_of_play or "")[:1200]
+    else:
+        idea = ideas_store.get(req.key)
+        if idea is None:
+            raise HTTPException(status_code=404, detail=f"idea {req.key} not found")
+        title = idea.title
+        extra_context = (idea.notes or "")[:1200]
+    try:
+        suggested = await asyncio.to_thread(
+            refine_ppr_summary,
+            req.kind, title, req.current_text, req.instruction, extra_context,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"llm failure: {e}")
+    return PPRRefineResponse(suggested=suggested)
 
 
 # ---------------------------------------------------------------------------

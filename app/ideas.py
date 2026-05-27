@@ -27,6 +27,10 @@ def _row_to_idea(row, docs: list[dict]) -> Idea:
         segs = json.loads(row["segments_json"] or "[]")
     except (KeyError, IndexError, json.JSONDecodeError):
         segs = []
+    try:
+        summary = row["ppr_summary"]
+    except (KeyError, IndexError):
+        summary = None
     return Idea(
         id=row["id"],
         title=row["title"],
@@ -40,6 +44,7 @@ def _row_to_idea(row, docs: list[dict]) -> Idea:
         promoted_epic_key=row["promoted_epic_key"],
         documents=[Document(**d) for d in docs],
         segments=segs,
+        ppr_summary=summary,
     )
 
 
@@ -159,10 +164,14 @@ async def update(idea_id: str, fields: dict) -> Optional[Idea]:
         "stakeholder": "stakeholder",
         "status": "status",
         "promoted_epic_key": "promoted_epic_key",
+        "ppr_summary": "ppr_summary",
     }
     for k, col in column_map.items():
         if fields.get(k) is not None:
-            _q(f"UPDATE ideas SET {col} = ? WHERE id = ?", (fields[k], idea_id))
+            value = fields[k]
+            if col == "ppr_summary" and value == "":
+                value = None
+            _q(f"UPDATE ideas SET {col} = ? WHERE id = ?", (value, idea_id))
 
     if fields.get("segments") is not None:
         _q(

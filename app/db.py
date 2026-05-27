@@ -91,7 +91,8 @@ CREATE TABLE IF NOT EXISTS ideas (
     created_at          TEXT NOT NULL,
     updated_at          TEXT NOT NULL,
     promoted_epic_key   TEXT,
-    segments_json       TEXT NOT NULL DEFAULT '[]'
+    segments_json       TEXT NOT NULL DEFAULT '[]',
+    ppr_summary         TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_ideas_status_position ON ideas(status, position);
 
@@ -113,7 +114,8 @@ CREATE TABLE IF NOT EXISTS epic_metadata (
     one_pager_url  TEXT,
     stakeholder    TEXT,
     idea_id        TEXT,
-    segments_json  TEXT NOT NULL DEFAULT '[]'
+    segments_json  TEXT NOT NULL DEFAULT '[]',
+    ppr_summary    TEXT
 );
 
 CREATE TABLE IF NOT EXISTS epic_metadata_documents (
@@ -257,6 +259,8 @@ def set_config(updates: dict[str, str]) -> dict[str, str]:
 def _ensure_schema(c: sqlite3.Connection) -> None:
     c.executescript(_SCHEMA)
     _add_column_if_missing(c, "ideas", "segments_json", "TEXT NOT NULL DEFAULT '[]'")
+    _add_column_if_missing(c, "ideas", "ppr_summary", "TEXT")
+    _add_column_if_missing(c, "epic_metadata", "ppr_summary", "TEXT")
     _seed_app_config(c)
 
 

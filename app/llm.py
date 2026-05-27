@@ -392,3 +392,51 @@ Produce an `ExtractedActionsResponse` JSON object. Only include actions explicit
     for a in parsed.proposed:
         a.source = "manual"
     return parsed
+
+
+# ---------------------------------------------------------------------------
+# PPR stakeholder summary refiner
+# ---------------------------------------------------------------------------
+
+
+def refine_ppr_summary(
+    item_kind: str,
+    title: str,
+    current_text: str,
+    instruction: str,
+    extra_context: str = "",
+) -> str:
+    """Rewrite a PPR stakeholder summary based on a user instruction.
+
+    Plain text in / plain text out - no Pydantic schema needed for a single
+    string response, so we use messages.create instead of messages.parse.
+    """
+    client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+
+    user_msg = (
+        f"## Item kind\n{item_kind}\n\n"
+        f"## Title\n{title}\n\n"
+        f"## Current summary\n{current_text or '(empty)'}\n\n"
+        f"## User instruction\n{instruction or '(none - just polish it)'}"
+    )
+    if extra_context:
+        user_msg += f"\n\n## Extra context\n{extra_context}"
+
+    system = (
+        "You rewrite stakeholder-facing project summaries for a Project Portfolio Review.\n"
+        "Rules:\n"
+        "- 1-2 short sentences, executive-level, no jargon or ticket keys\n"
+        "- focus on outcomes and impact for the audience segment, not implementation detail\n"
+        "- respect the user's instruction verbatim if they specified one\n"
+        "- write in English even if the input is in another language\n"
+        "- output the rewritten summary as plain text only, no preamble, no quotes, no labels"
+    )
+
+    response = client.messages.create(
+        model=MODEL,
+        max_tokens=600,
+        system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
+        messages=[{"role": "user", "content": user_msg}],
+    )
+    text_parts = [block.text for block in response.content if getattr(block, "type", None) == "text"]
+    return "\n".join(text_parts).strip()
