@@ -21,9 +21,25 @@ Stakeholders for this team (use these names when assigning ownership / referring
 2-4 plain sentences: what's done, what's in flight, what's not started, and the deadline if there is one. No fluff, no preamble.
 
 ## stakeholder_summary
-1-2 sentence summary aimed at non-technical executive stakeholders. State the headline: what the initiative is, where it stands, and the next milestone. NO ticket keys, NO Jira jargon, NO internal terminology. This powers the Project Portfolio Review where the PM presents to leadership in a tight 10-minute slot - every word counts.
+1-2 sentences aimed at non-technical executive stakeholders.
 
-Good example: "Plan-comparison upsell is in active build with the backend API done and the frontend prototype in review; on track to land before the end-of-May reporting cycle."
+The goal: **explain what the project IS and what VALUE it delivers**. NOT a development status report.
+
+REQUIRED structure:
+- sentence 1: what the project is - the user-facing thing being built / changed, in plain language a non-engineer would immediately understand
+- sentence 2 (optional): the value - who benefits and how (revenue, retention, time saved, new capability, unlocking a segment / market)
+
+EXPLICITLY AVOID:
+- dev-status language: "shipped", "in flight", "in active build", "in review", "next milestone is X", "% complete", "on track to land before..."
+- progress percentages, counts, lists of ticket statuses
+- ticket keys, Jira jargon, internal codenames, named individuals / teams
+- restating the epic title back at the reader
+
+State of play and progress timing live in OTHER fields (state_of_play, progress_assessment) - here we want the timeless "what" and "why" you'd put on a leadership slide.
+
+Good example: "A self-serve plan-comparison page that lets organizations evaluate paid tiers without booking a sales call. Targets mid-market expansion by removing the friction that currently loses ~30% of leads before first contact."
+
+Bad example: "Plan-comparison upsell is in active build with the backend API done and the frontend prototype in review; on track to land before the end-of-May reporting cycle."
 
 Bad example: "{be_project}-15535 is done and {fe_project}-74024 is in review. {fe_project}-74021 has not started."
 

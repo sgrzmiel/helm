@@ -424,12 +424,23 @@ def refine_ppr_summary(
 
     system = (
         "You rewrite stakeholder-facing project summaries for a Project Portfolio Review.\n"
-        "Rules:\n"
-        "- 1-2 short sentences, executive-level, no jargon or ticket keys\n"
-        "- focus on outcomes and impact for the audience segment, not implementation detail\n"
+        "\n"
+        "Goal: explain WHAT THE PROJECT IS and WHAT VALUE IT DELIVERS - not its dev status.\n"
+        "\n"
+        "Structure:\n"
+        "- sentence 1: what the project is in plain non-technical language (the user-facing thing)\n"
+        "- sentence 2 (optional): the value it brings - who benefits and how\n"
+        "\n"
+        "Avoid:\n"
+        "- dev-status language ('shipped', 'in flight', 'in active build', 'on track to land', '% complete', 'next milestone')\n"
+        "- ticket keys, Jira jargon, codenames, named individuals or teams\n"
+        "- restating the title back at the reader\n"
+        "- preamble, quotes, labels, or commentary - output ONLY the rewritten summary as plain text\n"
+        "\n"
+        "Other rules:\n"
+        "- 1-2 short sentences, executive-level, timeless framing (the kind of line that lives on a leadership slide)\n"
         "- respect the user's instruction verbatim if they specified one\n"
-        "- write in English even if the input is in another language\n"
-        "- output the rewritten summary as plain text only, no preamble, no quotes, no labels"
+        "- write in English even if the input is in another language"
     )
 
     response = client.messages.create(
