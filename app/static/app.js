@@ -3758,20 +3758,55 @@ async function copyPPRForSlides(btn) {
   }).join("\n\n");
 
   try {
-    if (window.ClipboardItem && navigator.clipboard?.write) {
-      await navigator.clipboard.write([new ClipboardItem({
-        "text/html": new Blob([html], { type: "text/html" }),
-        "text/plain": new Blob([plain], { type: "text/plain" }),
-      })]);
-    } else {
-      await navigator.clipboard.writeText(plain);
-    }
+    await copyRichAndPlain(html, plain);
     const original = btn.textContent;
     btn.textContent = "Copied ✓";
     setTimeout(() => { btn.textContent = original; }, 1500);
   } catch (e) {
     alert(`Copy failed: ${e.message}`);
   }
+}
+
+// Multi-tier clipboard write so it works on http://helm.local where the
+// Clipboard API is unavailable (it's restricted to secure contexts).
+async function copyRichAndPlain(html, plain) {
+  // Tier 1: modern Clipboard API with rich + plain payload
+  if (window.isSecureContext && window.ClipboardItem && navigator.clipboard?.write) {
+    try {
+      await navigator.clipboard.write([new ClipboardItem({
+        "text/html": new Blob([html], { type: "text/html" }),
+        "text/plain": new Blob([plain], { type: "text/plain" }),
+      })]);
+      return;
+    } catch { /* fall through */ }
+  }
+  // Tier 2: plain-text via writeText (still needs secure context)
+  if (window.isSecureContext && navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(plain);
+      return;
+    } catch { /* fall through */ }
+  }
+  // Tier 3: legacy execCommand on a contenteditable div so we can copy HTML
+  // even from a non-secure context. Browsers will paste this as rich text
+  // into Google Slides / Docs.
+  const div = document.createElement("div");
+  div.contentEditable = "true";
+  div.innerHTML = html;
+  div.style.position = "fixed";
+  div.style.left = "-9999px";
+  div.style.top = "0";
+  document.body.appendChild(div);
+  const selection = window.getSelection();
+  const range = document.createRange();
+  range.selectNodeContents(div);
+  selection.removeAllRanges();
+  selection.addRange(range);
+  let ok = false;
+  try { ok = document.execCommand("copy"); } catch { ok = false; }
+  selection.removeAllRanges();
+  document.body.removeChild(div);
+  if (!ok) throw new Error("execCommand('copy') was blocked - try the HTTPS host instead of http://helm.local");
 }
 
 $("page-ppr").addEventListener("input", (e) => {
