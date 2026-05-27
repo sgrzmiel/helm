@@ -459,12 +459,13 @@ async def get_ppr(recent_days: int = 60) -> PPRResponse:
     # Group by segment (business/school/home/students/other). Items inside a
     # group are a mix of tracked projects and queued ideas, each carrying
     # their own lifecycle stage so the UI can render a stage badge.
-    SEGMENT_ORDER: list[str] = ["business", "school", "home", "students", "other"]
+    SEGMENT_ORDER: list[str] = ["business", "school", "home", "students", "internal", "other"]
     SEGMENT_LABELS: dict[str, str] = {
         "business": "Business",
         "school": "School",
         "home": "Home",
         "students": "Students",
+        "internal": "Internal",
         "other": "Other / unsegmented",
     }
     buckets: dict[str, list[PPRProject]] = {s: [] for s in SEGMENT_ORDER}

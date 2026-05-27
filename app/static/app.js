@@ -1758,7 +1758,7 @@ function renderDetail() {
         <label>
           <span class="modal-field-label">Segments (audiences that benefit)</span>
           <div id="metadata-segments" class="segment-row">
-            ${["business", "school", "home", "students"].map((s) => `
+            ${["business", "school", "home", "students", "internal"].map((s) => `
               <label class="segment-toggle segment-${s}">
                 <input type="checkbox" data-action="metadata-segment" value="${s}" ${(d.metadata?.segments || []).includes(s) ? "checked" : ""} />
                 <span>${s}</span>
@@ -2901,7 +2901,7 @@ function closeAddIdeaForm() {
   $("idea-form-status").textContent = "";
 }
 
-const SEGMENT_NAMES = ["business", "school", "home", "students"];
+const SEGMENT_NAMES = ["business", "school", "home", "students", "internal"];
 
 function renderSegmentToggles(hostId, current) {
   const host = $(hostId);
@@ -3610,7 +3610,7 @@ function renderPPRSegmentFilter() {
   // Build filter options from groups present in the response so we don't
   // show buttons for empty segments.
   const present = new Set(pprState.groups.map((g) => g.segment));
-  const SEGMENTS = ["all", "business", "school", "home", "students", "other"].filter(
+  const SEGMENTS = ["all", "business", "school", "home", "students", "internal", "other"].filter(
     (s) => s === "all" || present.has(s),
   );
   $("ppr-segment-filter").innerHTML = SEGMENTS.map((s) => `
@@ -3650,7 +3650,7 @@ function pprRow(p) {
   const ipPct = total ? (counts.in_progress / total) * 100 : 0;
   const tdPct = total ? (counts.to_do / total) * 100 : 0;
   const isIdea = p.kind === "idea";
-  const stageLabel = isIdea ? "idea (queued)" : (PPR_STAGE_LABEL[p.stage] || p.stage);
+  const stageLabel = isIdea ? "in preparation for dev" : (PPR_STAGE_LABEL[p.stage] || p.stage);
   const summaryText = p.stakeholder_summary
     || (isIdea ? "(no notes yet)" : "(no AI analysis yet - open the project on Projects Dashboard to generate one, or click Refresh analysis)");
   return `

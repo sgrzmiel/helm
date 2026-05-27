@@ -328,7 +328,7 @@ class Document(BaseModel):
     fetch_error: Optional[str] = None
 
 
-Segment = Literal["business", "school", "home", "students"]
+Segment = Literal["business", "school", "home", "students", "internal"]
 SEGMENTS: tuple[str, ...] = ("business", "school", "home", "students")
 
 
@@ -455,7 +455,7 @@ class ActionsResponse(BaseModel):
 
 PPRStage = Literal["preparation", "development", "recently_completed"]
 PPRKind = Literal["project", "idea"]
-PPRSegmentBucket = Literal["business", "school", "home", "students", "other"]
+PPRSegmentBucket = Literal["business", "school", "home", "students", "internal", "other"]
 
 
 class PPRProject(BaseModel):

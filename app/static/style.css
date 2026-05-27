@@ -302,7 +302,8 @@ a:hover { color: var(--color-primary-hover); }
 .segment-chip.segment-business { background: var(--k-blue-light); color: var(--k-blue-dark); }
 .segment-chip.segment-school { background: var(--k-red-light); color: white; }
 .segment-chip.segment-home { background: var(--k-green-light); color: var(--k-green-dark); }
-.segment-chip.segment-students { background: var(--k-purple-light); color: white; }
+.segment-chip.segment-students { background: var(--k-green); color: white; }
+.segment-chip.segment-internal { background: var(--k-yellow-light); color: var(--k-yellow-dark); }
 
 .segment-row {
   display: flex;
@@ -335,7 +336,9 @@ a:hover { color: var(--color-primary-hover); }
 .segment-toggle.segment-home:has(input:checked),
 .segment-toggle.segment-home.active { background: var(--k-green-light); color: var(--k-green-dark); }
 .segment-toggle.segment-students:has(input:checked),
-.segment-toggle.segment-students.active { background: var(--k-purple-light); color: white; }
+.segment-toggle.segment-students.active { background: var(--k-green); color: white; }
+.segment-toggle.segment-internal:has(input:checked),
+.segment-toggle.segment-internal.active { background: var(--k-yellow-light); color: var(--k-yellow-dark); }
 .segment-toggle.segment-any.active { background: var(--k-grey-300); color: var(--color-text); }
 .modal-head { display: flex; justify-content: space-between; align-items: center; }
 .modal-grid {
@@ -1086,7 +1089,8 @@ body[data-auth="anon"] .epic-card[draggable] { -webkit-user-drag: none; }
 .ppr-segment-business { border-left-color: var(--k-blue-light); }
 .ppr-segment-school { border-left-color: var(--k-red-light); }
 .ppr-segment-home { border-left-color: var(--k-green-light); }
-.ppr-segment-students { border-left-color: var(--k-purple-light); }
+.ppr-segment-students { border-left-color: var(--k-green); }
+.ppr-segment-internal { border-left-color: var(--k-yellow-light); }
 .ppr-segment-other { border-left-color: var(--k-grey-300); }
 
 .ppr-group-head {
@@ -1101,7 +1105,8 @@ body[data-auth="anon"] .epic-card[draggable] { -webkit-user-drag: none; }
 .ppr-segment-business .ppr-group-head h3 { color: var(--k-blue-dark); }
 .ppr-segment-school .ppr-group-head h3 { color: var(--k-red-dark); }
 .ppr-segment-home .ppr-group-head h3 { color: var(--k-green-dark); }
-.ppr-segment-students .ppr-group-head h3 { color: var(--k-purple-dark, var(--color-text)); }
+.ppr-segment-students .ppr-group-head h3 { color: var(--k-green-dark); }
+.ppr-segment-internal .ppr-group-head h3 { color: var(--k-yellow-dark); }
 
 .ppr-rows {
   display: flex;
