@@ -69,6 +69,10 @@
               <option value="dropped">Dropped</option>
             </select>
           </label>
+          <label>
+            <span class="modal-field-label">Segments (audiences that benefit)</span>
+            <div id="idea-edit-segments" class="segment-row"></div>
+          </label>
           <div id="idea-edit-meta" class="modal-meta"></div>
         </div>
         <div class="row modal-actions">
@@ -310,6 +314,10 @@
             <textarea id="new-idea-notes" rows="2" placeholder="Notes, context, why it matters"></textarea>
             <input type="text" id="new-idea-onepager" placeholder="One-pager URL (optional)" />
             <input type="text" id="new-idea-stakeholder" placeholder="Stakeholder (optional)" />
+            <label>
+              <span class="modal-field-label">Segments</span>
+              <div id="new-idea-segments" class="segment-row"></div>
+            </label>
             <div class="form-actions">
               <button id="idea-save-btn" type="button">Save idea</button>
               <button id="idea-cancel-btn" type="button" class="secondary">Cancel</button>

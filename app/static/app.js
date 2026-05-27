@@ -2783,6 +2783,7 @@ function ideaCard(i) {
   // First doc renders as the headline link; additional ones get a count badge.
   const firstDoc = docs[0];
   const moreDocs = docs.length > 1 ? `<span class="doc-count">+${docs.length - 1} more</span>` : "";
+  const segs = i.segments || [];
   return `
     <div class="idea-card" data-id="${escapeHtml(i.id)}">
       <div class="idea-title">${escapeHtml(i.title)}</div>
@@ -2793,6 +2794,7 @@ function ideaCard(i) {
         ${moreDocs}
         ${promoted}
       </div>
+      ${segs.length ? `<div class="idea-segments">${segs.map((s) => `<span class="segment-chip segment-${escapeHtml(s)}">${escapeHtml(s)}</span>`).join("")}</div>` : ""}
       <div class="idea-actions">
         <button data-action="edit-idea" data-id="${escapeHtml(i.id)}">edit</button>
         ${i.status !== "promoted" ? `<button data-action="promote-idea" data-id="${escapeHtml(i.id)}">promote →</button>` : ""}
@@ -2889,12 +2891,34 @@ async function onColumnDrop(e) {
 
 function openAddIdeaForm() {
   $("idea-add-form").classList.remove("hidden");
+  renderSegmentToggles("new-idea-segments", []);
   $("new-idea-title").focus();
 }
 function closeAddIdeaForm() {
   $("idea-add-form").classList.add("hidden");
   ["new-idea-title", "new-idea-notes", "new-idea-onepager", "new-idea-stakeholder"].forEach((id) => { $(id).value = ""; });
+  renderSegmentToggles("new-idea-segments", []);
   $("idea-form-status").textContent = "";
+}
+
+const SEGMENT_NAMES = ["business", "school", "home", "students"];
+
+function renderSegmentToggles(hostId, current) {
+  const host = $(hostId);
+  if (!host) return;
+  const selected = new Set(current || []);
+  host.innerHTML = SEGMENT_NAMES.map((s) => `
+    <label class="segment-toggle segment-${s}">
+      <input type="checkbox" data-segment="${s}" ${selected.has(s) ? "checked" : ""} />
+      <span>${s}</span>
+    </label>
+  `).join("");
+}
+
+function readSegmentToggles(hostId) {
+  return [...$(hostId).querySelectorAll('input[type="checkbox"][data-segment]')]
+    .filter((cb) => cb.checked)
+    .map((cb) => cb.dataset.segment);
 }
 
 async function saveIdea() {
@@ -2913,6 +2937,7 @@ async function saveIdea() {
         notes: $("new-idea-notes").value,
         one_pager_url: $("new-idea-onepager").value || null,
         stakeholder: $("new-idea-stakeholder").value || null,
+        segments: readSegmentToggles("new-idea-segments"),
       }),
     });
     if (!resp.ok) {
@@ -2937,6 +2962,7 @@ function editIdea(id) {
   $("idea-edit-notes").value = idea.notes || "";
   $("idea-edit-stakeholder").value = idea.stakeholder || "";
   $("idea-edit-status-select").value = idea.status || "exploring";
+  renderSegmentToggles("idea-edit-segments", idea.segments || []);
   renderEditingDocs();
   // Meta strip - read-only context the user can see
   const created = idea.created_at ? new Date(idea.created_at).toLocaleString() : "?";
@@ -3038,6 +3064,7 @@ async function saveIdeaEdit() {
         stakeholder: $("idea-edit-stakeholder").value.trim() || null,
         status: newStatus,
         documents: docsPayload,
+        segments: readSegmentToggles("idea-edit-segments"),
       }),
     });
     if (!resp.ok) {

@@ -300,8 +300,8 @@ a:hover { color: var(--color-primary-hover); }
   letter-spacing: 0.5px;
 }
 .segment-chip.segment-business { background: var(--k-blue-light); color: var(--k-blue-dark); }
-.segment-chip.segment-school { background: var(--k-green-light); color: var(--k-green-dark); }
-.segment-chip.segment-home { background: var(--k-orange-light); color: var(--k-orange-dark); }
+.segment-chip.segment-school { background: var(--k-red-light); color: white; }
+.segment-chip.segment-home { background: var(--k-green-light); color: var(--k-green-dark); }
 .segment-chip.segment-students { background: var(--k-purple-light); color: white; }
 
 .segment-row {
@@ -331,9 +331,9 @@ a:hover { color: var(--color-primary-hover); }
 .segment-toggle.segment-business:has(input:checked),
 .segment-toggle.segment-business.active { background: var(--k-blue-light); color: var(--k-blue-dark); }
 .segment-toggle.segment-school:has(input:checked),
-.segment-toggle.segment-school.active { background: var(--k-green-light); color: var(--k-green-dark); }
+.segment-toggle.segment-school.active { background: var(--k-red-light); color: white; }
 .segment-toggle.segment-home:has(input:checked),
-.segment-toggle.segment-home.active { background: var(--k-orange-light); color: var(--k-orange-dark); }
+.segment-toggle.segment-home.active { background: var(--k-green-light); color: var(--k-green-dark); }
 .segment-toggle.segment-students:has(input:checked),
 .segment-toggle.segment-students.active { background: var(--k-purple-light); color: white; }
 .segment-toggle.segment-any.active { background: var(--k-grey-300); color: var(--color-text); }
@@ -1084,8 +1084,8 @@ body[data-auth="anon"] .epic-card[draggable] { -webkit-user-drag: none; }
   border-left: 6px solid var(--k-grey-300);
 }
 .ppr-segment-business { border-left-color: var(--k-blue-light); }
-.ppr-segment-school { border-left-color: var(--k-green-light); }
-.ppr-segment-home { border-left-color: var(--k-orange-light); }
+.ppr-segment-school { border-left-color: var(--k-red-light); }
+.ppr-segment-home { border-left-color: var(--k-green-light); }
 .ppr-segment-students { border-left-color: var(--k-purple-light); }
 .ppr-segment-other { border-left-color: var(--k-grey-300); }
 
@@ -1099,8 +1099,8 @@ body[data-auth="anon"] .epic-card[draggable] { -webkit-user-drag: none; }
 }
 .ppr-group-head h3 { margin: 0; }
 .ppr-segment-business .ppr-group-head h3 { color: var(--k-blue-dark); }
-.ppr-segment-school .ppr-group-head h3 { color: var(--k-green-dark); }
-.ppr-segment-home .ppr-group-head h3 { color: var(--k-orange-dark); }
+.ppr-segment-school .ppr-group-head h3 { color: var(--k-red-dark); }
+.ppr-segment-home .ppr-group-head h3 { color: var(--k-green-dark); }
 .ppr-segment-students .ppr-group-head h3 { color: var(--k-purple-dark, var(--color-text)); }
 
 .ppr-rows {
@@ -1148,17 +1148,18 @@ body[data-auth="anon"] .epic-card[draggable] { -webkit-user-drag: none; }
   gap: var(--sp-1);
 }
 .ppr-stage-badge {
-  padding: 2px 8px;
+  padding: 4px 10px;
   border-radius: var(--radius-pill);
   font-size: var(--fs-body4);
-  font-weight: 700;
+  font-weight: 800;
   text-transform: uppercase;
-  letter-spacing: 0.3px;
+  letter-spacing: 0.4px;
   background: var(--k-grey-200, var(--k-grey-100));
   color: var(--color-text);
+  white-space: nowrap;
 }
-.ppr-stage-badge.ppr-stage-preparation { background: var(--k-blue-light); color: var(--k-blue-dark); }
-.ppr-stage-badge.ppr-stage-development { background: var(--k-orange-light); color: var(--k-orange-dark); }
+.ppr-stage-badge.ppr-stage-preparation { background: var(--k-yellow-light); color: var(--k-yellow-dark); }
+.ppr-stage-badge.ppr-stage-development { background: var(--k-blue-light); color: var(--k-blue-dark); }
 .ppr-stage-badge.ppr-stage-recently_completed { background: var(--k-green-light); color: var(--k-green-dark); }
 
 #ppr-segment-filter .segment-toggle.active { outline: 2px solid var(--color-primary); outline-offset: 1px; }
@@ -1915,6 +1916,11 @@ fieldset.audience-row legend {
   gap: var(--sp-2);
   align-items: center;
   font-size: var(--fs-body4);
+}
+.idea-card .idea-segments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
 }
 .idea-card .idea-stakeholder {
   background: var(--color-bg-deep);

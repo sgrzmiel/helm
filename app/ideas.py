@@ -8,6 +8,7 @@ Manage requirements flow.
 
 from __future__ import annotations
 
+import json
 import secrets
 from datetime import datetime, timezone
 from typing import Optional
@@ -22,6 +23,10 @@ def _now() -> str:
 
 
 def _row_to_idea(row, docs: list[dict]) -> Idea:
+    try:
+        segs = json.loads(row["segments_json"] or "[]")
+    except (KeyError, IndexError, json.JSONDecodeError):
+        segs = []
     return Idea(
         id=row["id"],
         title=row["title"],
@@ -34,6 +39,7 @@ def _row_to_idea(row, docs: list[dict]) -> Idea:
         updated_at=row["updated_at"],
         promoted_epic_key=row["promoted_epic_key"],
         documents=[Document(**d) for d in docs],
+        segments=segs,
     )
 
 
@@ -96,13 +102,14 @@ async def create(
     stakeholder: Optional[str] = None,
     status: str = "exploring",
     documents: Optional[list[dict]] = None,
+    segments: Optional[list[str]] = None,
 ) -> Idea:
     new_id = secrets.token_urlsafe(8)
     now = _now()
     _q(
         """INSERT INTO ideas
-           (id, title, notes, one_pager_url, stakeholder, status, position, created_at, updated_at, promoted_epic_key)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)""",
+           (id, title, notes, one_pager_url, stakeholder, status, position, created_at, updated_at, promoted_epic_key, segments_json)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)""",
         (
             new_id,
             title.strip(),
@@ -112,6 +119,7 @@ async def create(
             status,
             _next_position(status),
             now, now,
+            json.dumps(list(segments or [])),
         ),
     )
     docs = await refresh_documents(documents or [], existing=[])
@@ -155,6 +163,12 @@ async def update(idea_id: str, fields: dict) -> Optional[Idea]:
     for k, col in column_map.items():
         if fields.get(k) is not None:
             _q(f"UPDATE ideas SET {col} = ? WHERE id = ?", (fields[k], idea_id))
+
+    if fields.get("segments") is not None:
+        _q(
+            "UPDATE ideas SET segments_json = ? WHERE id = ?",
+            (json.dumps(list(fields["segments"])), idea_id),
+        )
 
     # Documents - refresh on change
     if "documents" in fields and fields["documents"] is not None:

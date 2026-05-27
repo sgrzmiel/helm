@@ -90,7 +90,8 @@ CREATE TABLE IF NOT EXISTS ideas (
     position            INTEGER NOT NULL DEFAULT 0,
     created_at          TEXT NOT NULL,
     updated_at          TEXT NOT NULL,
-    promoted_epic_key   TEXT
+    promoted_epic_key   TEXT,
+    segments_json       TEXT NOT NULL DEFAULT '[]'
 );
 CREATE INDEX IF NOT EXISTS idx_ideas_status_position ON ideas(status, position);
 
@@ -255,7 +256,14 @@ def set_config(updates: dict[str, str]) -> dict[str, str]:
 
 def _ensure_schema(c: sqlite3.Connection) -> None:
     c.executescript(_SCHEMA)
+    _add_column_if_missing(c, "ideas", "segments_json", "TEXT NOT NULL DEFAULT '[]'")
     _seed_app_config(c)
+
+
+def _add_column_if_missing(c: sqlite3.Connection, table: str, column: str, decl: str) -> None:
+    existing = {row["name"] for row in c.execute(f"PRAGMA table_info({table})")}
+    if column not in existing:
+        c.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
 
 
 # ---------------------------------------------------------------------------

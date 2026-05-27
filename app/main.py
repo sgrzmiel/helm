@@ -241,6 +241,7 @@ async def post_idea(req: CreateIdeaRequest) -> Idea:
         stakeholder=req.stakeholder,
         status=req.status,
         documents=docs_payload,
+        segments=req.segments,
     )
 
 
@@ -527,6 +528,7 @@ async def get_ppr(recent_days: int = 60) -> PPRResponse:
     for idea in ideas_store.list_ideas():
         if idea.status != "queued":
             continue
+        idea_segments = list(idea.segments or [])
         item = PPRProject(
             kind="idea",
             stage="preparation",
@@ -535,13 +537,13 @@ async def get_ppr(recent_days: int = 60) -> PPRResponse:
             progress_pct=0,
             counts=StatusCounts(),
             duedate=None,
-            segments=[],
+            segments=idea_segments,
             assessment=None,
             stakeholder=idea.stakeholder,
             one_pager_url=idea.one_pager_url,
             stakeholder_summary=(idea.notes or "").strip() or None,
         )
-        buckets["other"].append(item)
+        buckets[primary_segment(idea_segments)].append(item)
 
     # Sort each segment bucket: in development > in preparation > recently
     # completed; tie-break by progress desc so the most-active sits on top.

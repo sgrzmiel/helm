@@ -222,6 +222,7 @@ class Idea(BaseModel):
     updated_at: str
     promoted_epic_key: Optional[str] = None  # set when promoted via /promote
     documents: list[Document] = Field(default_factory=list)
+    segments: list["Segment"] = Field(default_factory=list)
 
 
 class IdeasResponse(BaseModel):
@@ -242,6 +243,7 @@ class CreateIdeaRequest(BaseModel):
     stakeholder: Optional[str] = None
     status: IdeaStatus = "exploring"
     documents: Optional[list[DocumentInput]] = None
+    segments: Optional[list["Segment"]] = None
 
 
 class UpdateIdeaRequest(BaseModel):
@@ -252,6 +254,7 @@ class UpdateIdeaRequest(BaseModel):
     status: Optional[IdeaStatus] = None
     promoted_epic_key: Optional[str] = None
     documents: Optional[list[DocumentInput]] = None
+    segments: Optional[list["Segment"]] = None
 
 
 class ReorderEntry(BaseModel):
