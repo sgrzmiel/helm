@@ -1126,6 +1126,7 @@ function renderStatusList() {
         ${progressBar(e.counts)}
         ${roleSplitRow(e.role_split, { compact: true })}
         <div class="card-footer">
+          <button class="link-btn" data-action="open-demo" data-key="${escapeHtml(e.key)}" data-title="${escapeHtml(e.summary)}">demo summary</button>
           <button class="link-btn" data-action="remove" data-key="${escapeHtml(e.key)}">remove</button>
         </div>
       </div>
@@ -1956,6 +1957,9 @@ $("tracked-list").addEventListener("click", (e) => {
   } else if (action === "create-stub" && key) {
     e.stopPropagation();
     createStubTicket(key, e.target);
+  } else if (action === "open-demo" && key) {
+    e.stopPropagation();
+    openDemoModal("project", key, e.target.dataset.title || key);
   } else if (key) {
     // Click on the active card collapses the detail; clicking another card
     // switches to that detail.
