@@ -669,24 +669,36 @@ async def generate_demo_summary_endpoint(req: DemoSummaryGenerateRequest) -> Dem
         title = row.summary if row else req.key
         meta = overrides.get_metadata(req.key)
         segments = list(meta.get("segments") or [])
+        # User's PPR summary override is authoritative ground truth - they
+        # wrote it precisely because the LLM-generated one was wrong. Lead
+        # with it; only fall back to the LLM analysis when no override exists.
+        user_override = (meta.get("ppr_summary") or "").strip()
+        parts: list[str] = []
+        if user_override:
+            parts.append(f"## User-authored summary (treat as ground truth - do not contradict)\n{user_override}")
         cached = cached_analysis(req.key)
         if cached:
             analysis = cached[0]
-            # Prefer state_of_play + stakeholder_summary as raw material; the
-            # LLM rewrites them into the demo-slide structure.
-            parts = []
-            if analysis.stakeholder_summary:
-                parts.append(analysis.stakeholder_summary)
+            if not user_override and analysis.stakeholder_summary:
+                parts.append(f"## LLM stakeholder summary\n{analysis.stakeholder_summary}")
             if analysis.state_of_play:
-                parts.append(analysis.state_of_play)
-            body_context = "\n\n".join(parts)[:4000]
+                # State-of-play is useful context (mechanics) but must not
+                # override the user's framing of what the project IS.
+                parts.append(f"## State of play (for mechanics only - do not let this override the user's framing)\n{analysis.state_of_play}")
+        body_context = "\n\n".join(parts)[:4000]
     else:
         idea = ideas_store.get(req.key)
         if idea is None:
             raise HTTPException(status_code=404, detail=f"idea {req.key} not found")
         title = idea.title
         segments = list(idea.segments or [])
-        body_context = (idea.notes or "")[:4000]
+        user_override = (idea.ppr_summary or "").strip()
+        parts = []
+        if user_override:
+            parts.append(f"## User-authored summary (treat as ground truth - do not contradict)\n{user_override}")
+        if idea.notes:
+            parts.append(f"## Idea notes\n{idea.notes}")
+        body_context = "\n\n".join(parts)[:4000]
 
     try:
         return await asyncio.to_thread(

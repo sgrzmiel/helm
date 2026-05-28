@@ -23,9 +23,10 @@ The audience / plan / segment this is gated to. Examples: "Universal K-12 plans"
 
 # Hard rules
 
+- **User-authored summary is ground truth.** If the user message contains a section labeled "User-authored summary (treat as ground truth - do not contradict)", the demo summary you produce MUST be consistent with it. Don't contradict the framing, the audience, or the gating. If the user says "this is for our internal team", then "Available to" is an internal audience and Purpose/Description/Value reflect internal users - NOT external customers. Other context (state_of_play, notes) is only for mechanics; it must NEVER override the user's framing.
 - **No dev status language**: ban "shipped", "in flight", "in active build", "on track to land", "next milestone", "% complete", "in progress". This is a CAPABILITY description, not a status report.
-- **No ticket keys, no Jira jargon**, no internal team / codename references.
-- **No "we" / "the team" / "engineering"** as subject. Subject is the user or the product.
+- **No ticket keys, no Jira jargon**, no internal codename references (but internal teams as the audience are fine when the user-authored summary says so).
+- **No "we" / "the team" / "engineering"** as subject. Subject is the user or the product. Exception: when the audience IS an internal team, you may write "the {team name} team can now ..." in Description.
 - **English only.**
 - **Use a regular hyphen `-`**, never `—` or `–`.
 
