@@ -189,6 +189,26 @@ async def update(idea_id: str, fields: dict) -> Optional[Idea]:
     return get(idea_id)
 
 
+def get_demo_summary(idea_id: str) -> Optional[dict]:
+    row = _qone("SELECT demo_summary_json FROM ideas WHERE id = ?", (idea_id,))
+    if row is None or row["demo_summary_json"] is None:
+        return None
+    try:
+        return json.loads(row["demo_summary_json"])
+    except json.JSONDecodeError:
+        return None
+
+
+def set_demo_summary(idea_id: str, summary: Optional[dict]) -> Optional[dict]:
+    if _qone("SELECT id FROM ideas WHERE id = ?", (idea_id,)) is None:
+        return None
+    if summary is None:
+        _q("UPDATE ideas SET demo_summary_json = NULL WHERE id = ?", (idea_id,))
+    else:
+        _q("UPDATE ideas SET demo_summary_json = ? WHERE id = ?", (json.dumps(summary), idea_id))
+    return get_demo_summary(idea_id)
+
+
 def delete(idea_id: str) -> bool:
     row = _qone("SELECT id FROM ideas WHERE id = ?", (idea_id,))
     if row is None:

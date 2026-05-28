@@ -493,6 +493,36 @@ class PPRResponse(BaseModel):
     recent_window_days: int = 60
 
 
+class DemoSummary(BaseModel):
+    """Fixed-format demo-session slide content for a project / idea.
+
+    Used in the PPR tab's per-row demo modal. The four-section structure
+    matches the team's standard slide layout (Purpose / Description /
+    Value / Available to)."""
+    purpose: str = Field(description="One sentence answering 'what does this let users do?'")
+    description: str = Field(description="2-4 sentences explaining how it works in plain language.")
+    value: str = Field(description="1-2 sentences naming who benefits and how.")
+    available_to: str = Field(description="Audience / plans this is gated to (e.g. 'Universal K-12 plans', 'all users').")
+
+
+class DemoSummaryGetResponse(BaseModel):
+    kind: PPRKind
+    key: str
+    summary: Optional[DemoSummary] = None
+
+
+class DemoSummaryUpdate(BaseModel):
+    kind: PPRKind
+    key: str
+    summary: Optional[DemoSummary] = Field(default=None, description="Set null to clear the saved demo summary.")
+
+
+class DemoSummaryGenerateRequest(BaseModel):
+    kind: PPRKind
+    key: str
+    instruction: str = Field(default="", description="Optional steer for the LLM, e.g. 'focus on the K-12 angle'.")
+
+
 class PPRSummaryUpdate(BaseModel):
     kind: PPRKind
     key: str  # epic key or idea id

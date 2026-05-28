@@ -9,7 +9,7 @@ from typing import Any, Optional
 import anthropic
 
 from .db import get_all_config
-from .models import EpicAnalysis, ExtractedActionsResponse, Proposal, SlackReply, TicketSnapshot
+from .models import DemoSummary, EpicAnalysis, ExtractedActionsResponse, Proposal, SlackReply, TicketSnapshot
 
 
 MODEL = "claude-opus-4-7"
@@ -451,3 +451,53 @@ def refine_ppr_summary(
     )
     text_parts = [block.text for block in response.content if getattr(block, "type", None) == "text"]
     return "\n".join(text_parts).strip()
+
+
+# ---------------------------------------------------------------------------
+# Demo-session slide summary
+# ---------------------------------------------------------------------------
+
+
+def generate_demo_summary(
+    item_kind: str,
+    title: str,
+    body_context: str,
+    segments: list[str],
+    instruction: str = "",
+) -> DemoSummary:
+    """Produce a 4-section demo-slide summary (Purpose / Description / Value /
+    Available to) from whatever context is available about the project or idea.
+
+    Uses messages.parse with the DemoSummary schema so the response is always
+    structured exactly the way the slide expects.
+    """
+    client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+
+    segments_line = ", ".join(segments) if segments else "(none declared)"
+    parts = [
+        f"## Item kind\n{item_kind}",
+        f"\n## Title\n{title}",
+        f"\n## Declared segments\n{segments_line}",
+        f"\n## Source context (epic state-of-play or idea notes)\n{body_context or '(empty)'}",
+    ]
+    if instruction.strip():
+        parts.append(f"\n## User steer\n{instruction.strip()}")
+    parts.append(
+        "\n## Task\nReturn a DemoSummary JSON object. Follow the four-section structure exactly. "
+        "Reread the system prompt rules before writing - especially the bans on dev-status language and 'we' as subject."
+    )
+
+    response = client.messages.parse(
+        model=MODEL,
+        max_tokens=2000,
+        system=[{"type": "text", "text": render_prompt("demo-summary"), "cache_control": {"type": "ephemeral"}}],
+        messages=[{"role": "user", "content": "\n".join(parts)}],
+        output_format=DemoSummary,
+    )
+
+    parsed = response.parsed_output
+    if parsed is None:
+        raise RuntimeError(
+            f"Demo-summary model did not return valid structured output. stop_reason={response.stop_reason}"
+        )
+    return parsed

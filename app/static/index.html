@@ -84,6 +84,46 @@
       </div>
     </div>
 
+    <div id="demo-summary-modal" class="login-modal hidden">
+      <div class="login-card demo-summary-card">
+        <div class="modal-head">
+          <h3 id="demo-summary-title">Demo summary</h3>
+          <button class="icon-btn" id="demo-summary-close" type="button" title="Close">×</button>
+        </div>
+        <p class="sub" id="demo-summary-context"></p>
+        <div class="modal-grid">
+          <label>
+            <span class="modal-field-label">Purpose</span>
+            <textarea id="demo-purpose" rows="2" placeholder="One sentence: what does this let users do?"></textarea>
+          </label>
+          <label>
+            <span class="modal-field-label">Description</span>
+            <textarea id="demo-description" rows="6" placeholder="2-4 sentences explaining how it works"></textarea>
+          </label>
+          <label>
+            <span class="modal-field-label">Value</span>
+            <textarea id="demo-value" rows="2" placeholder="1-2 sentences: who benefits, how"></textarea>
+          </label>
+          <label>
+            <span class="modal-field-label">Available to</span>
+            <input type="text" id="demo-available-to" placeholder="Plans / audience (e.g. Universal K-12 plans)" />
+          </label>
+          <label>
+            <span class="modal-field-label">AI steer (optional)</span>
+            <input type="text" id="demo-instruction" placeholder="e.g. focus on K-12 angle / keep it under 50 words / emphasize compliance" />
+          </label>
+        </div>
+        <div class="row modal-actions">
+          <button id="demo-generate-btn" type="button" class="secondary">Generate with AI</button>
+          <button id="demo-save-btn" type="button">Save</button>
+          <button id="demo-copy-btn" type="button" class="secondary">Copy to clipboard</button>
+          <button id="demo-clear-btn" type="button" class="danger">Reset</button>
+          <button id="demo-cancel-btn" type="button" class="secondary">Cancel</button>
+          <span id="demo-summary-status" class="status"></span>
+        </div>
+      </div>
+    </div>
+
     <div class="tabs-bar">
       <nav id="main-nav">
         <button type="button" data-page="status" class="nav-btn active">Projects Dashboard</button>

@@ -21,6 +21,7 @@ from .llm import (  # noqa: E402
     build_proposal,
     cached_analysis,
     clear_analysis_cache,
+    generate_demo_summary,
     refine_ppr_summary,
     generate_slack_reply,
 )
@@ -29,6 +30,10 @@ from .models import (  # noqa: E402
     ActionItemForList,
     ActionsGroup,
     ActionsResponse,
+    DemoSummary,
+    DemoSummaryGenerateRequest,
+    DemoSummaryGetResponse,
+    DemoSummaryUpdate,
     PPRGroup,
     PPRProject,
     PPRRefineRequest,
@@ -613,6 +618,83 @@ async def refine_summary(req: PPRRefineRequest) -> PPRRefineResponse:
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"llm failure: {e}")
     return PPRRefineResponse(suggested=suggested)
+
+
+# ---------------------------------------------------------------------------
+# Demo-session summary (per-project 4-section slide content)
+# ---------------------------------------------------------------------------
+
+
+def _load_demo_summary(kind: str, key: str) -> Optional[DemoSummary]:
+    raw = overrides.get_epic_demo_summary(key) if kind == "project" else ideas_store.get_demo_summary(key)
+    if not raw:
+        return None
+    try:
+        return DemoSummary(**raw)
+    except Exception:
+        return None
+
+
+@app.get("/api/ppr/demo-summary/{kind}/{key}", response_model=DemoSummaryGetResponse, dependencies=[Depends(auth.require_auth)])
+async def get_demo_summary(kind: str, key: str) -> DemoSummaryGetResponse:
+    if kind not in ("project", "idea"):
+        raise HTTPException(status_code=400, detail="kind must be 'project' or 'idea'")
+    return DemoSummaryGetResponse(kind=kind, key=key, summary=_load_demo_summary(kind, key))
+
+
+@app.patch("/api/ppr/demo-summary", response_model=DemoSummaryGetResponse, dependencies=[Depends(auth.require_auth)])
+async def update_demo_summary(req: DemoSummaryUpdate) -> DemoSummaryGetResponse:
+    payload = req.summary.model_dump() if req.summary else None
+    if req.kind == "project":
+        if req.key not in tracked.list_keys():
+            raise HTTPException(status_code=404, detail=f"epic {req.key} not tracked")
+        overrides.set_epic_demo_summary(req.key, payload)
+    else:
+        result = ideas_store.set_demo_summary(req.key, payload)
+        if result is None and payload is not None:
+            raise HTTPException(status_code=404, detail=f"idea {req.key} not found")
+    return DemoSummaryGetResponse(kind=req.kind, key=req.key, summary=_load_demo_summary(req.kind, req.key))
+
+
+@app.post("/api/ppr/demo-summary/generate", response_model=DemoSummary, dependencies=[Depends(auth.require_auth)])
+async def generate_demo_summary_endpoint(req: DemoSummaryGenerateRequest) -> DemoSummary:
+    """Generate a fresh demo summary from whatever Helm knows about the item.
+    Does NOT auto-save - the frontend persists via PATCH after the user reviews."""
+    _require_credentials("ANTHROPIC_API_KEY")
+    title = ""
+    body_context = ""
+    segments: list[str] = []
+    if req.kind == "project":
+        row = _DASHBOARD_CACHE.get(req.key)
+        title = row.summary if row else req.key
+        meta = overrides.get_metadata(req.key)
+        segments = list(meta.get("segments") or [])
+        cached = cached_analysis(req.key)
+        if cached:
+            analysis = cached[0]
+            # Prefer state_of_play + stakeholder_summary as raw material; the
+            # LLM rewrites them into the demo-slide structure.
+            parts = []
+            if analysis.stakeholder_summary:
+                parts.append(analysis.stakeholder_summary)
+            if analysis.state_of_play:
+                parts.append(analysis.state_of_play)
+            body_context = "\n\n".join(parts)[:4000]
+    else:
+        idea = ideas_store.get(req.key)
+        if idea is None:
+            raise HTTPException(status_code=404, detail=f"idea {req.key} not found")
+        title = idea.title
+        segments = list(idea.segments or [])
+        body_context = (idea.notes or "")[:4000]
+
+    try:
+        return await asyncio.to_thread(
+            generate_demo_summary,
+            req.kind, title, body_context, segments, req.instruction,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"llm failure: {e}")
 
 
 # ---------------------------------------------------------------------------

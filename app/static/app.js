@@ -3666,6 +3666,7 @@ function pprRow(p) {
         ${!isIdea && total ? `<span class="ppr-progress">${p.progress_pct}%</span>` : ""}
         ${p.one_pager_url ? `<a class="idea-onepager" href="${escapeHtml(p.one_pager_url)}" target="_blank" rel="noopener noreferrer">one-pager ↗</a>` : ""}
         ${isEditing ? "" : `<button class="link-btn detail-link" data-action="ppr-edit-summary" data-kind="${p.kind}" data-key="${escapeHtml(p.key)}">edit summary</button>`}
+        ${isEditing ? "" : `<button class="link-btn detail-link" data-action="ppr-open-demo" data-kind="${p.kind}" data-key="${escapeHtml(p.key)}" data-title="${escapeHtml(p.summary)}">demo summary</button>`}
       </div>
       ${isEditing
         ? pprSummaryEditor(p, summaryText)
@@ -3723,6 +3724,157 @@ $("page-ppr").addEventListener("click", (e) => {
     refinePPRSummary(target.dataset.kind, target.dataset.key);
   } else if (action === "ppr-copy-for-slides") {
     copyPPRForSlides(target);
+  } else if (action === "ppr-open-demo") {
+    openDemoModal(target.dataset.kind, target.dataset.key, target.dataset.title);
+  }
+});
+
+// ---------- Demo-summary modal ----------
+
+const demoModalState = { kind: null, key: null };
+
+async function openDemoModal(kind, key, title) {
+  demoModalState.kind = kind;
+  demoModalState.key = key;
+  $("demo-summary-title").textContent = `Demo summary - ${title}`;
+  $("demo-summary-context").textContent = kind === "idea"
+    ? "Generates a 4-section demo slide from the idea notes."
+    : "Generates a 4-section demo slide from the cached project analysis.";
+  ["demo-purpose", "demo-description", "demo-value", "demo-available-to", "demo-instruction"].forEach((id) => { $(id).value = ""; });
+  _demoStatus("loading…");
+  $("demo-summary-modal").classList.remove("hidden");
+
+  try {
+    const resp = await fetch(`/api/ppr/demo-summary/${encodeURIComponent(kind)}/${encodeURIComponent(key)}`);
+    if (!resp.ok) throw new Error(resp.statusText);
+    const data = await resp.json();
+    if (data.summary) {
+      $("demo-purpose").value = data.summary.purpose || "";
+      $("demo-description").value = data.summary.description || "";
+      $("demo-value").value = data.summary.value || "";
+      $("demo-available-to").value = data.summary.available_to || "";
+      _demoStatus("loaded saved version");
+    } else {
+      _demoStatus("no saved version yet - click Generate with AI to draft one");
+    }
+  } catch (e) {
+    _demoStatus(`error: ${e.message}`, true);
+  }
+}
+
+function closeDemoModal() {
+  $("demo-summary-modal").classList.add("hidden");
+  demoModalState.kind = null;
+  demoModalState.key = null;
+}
+
+function _demoStatus(text, isError) {
+  const el = $("demo-summary-status");
+  el.textContent = text || "";
+  el.className = `status${isError ? " error" : ""}`;
+}
+
+function _demoCurrent() {
+  return {
+    purpose: $("demo-purpose").value.trim(),
+    description: $("demo-description").value.trim(),
+    value: $("demo-value").value.trim(),
+    available_to: $("demo-available-to").value.trim(),
+  };
+}
+
+async function generateDemoSummary() {
+  const { kind, key } = demoModalState;
+  if (!kind || !key) return;
+  _demoStatus("asking Claude (typically 15-30s)…");
+  try {
+    const resp = await fetch("/api/ppr/demo-summary/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ kind, key, instruction: $("demo-instruction").value.trim() }),
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({ detail: resp.statusText }));
+      throw new Error(err.detail || resp.statusText);
+    }
+    const data = await resp.json();
+    $("demo-purpose").value = data.purpose || "";
+    $("demo-description").value = data.description || "";
+    $("demo-value").value = data.value || "";
+    $("demo-available-to").value = data.available_to || "";
+    _demoStatus("draft generated - review, edit, then Save");
+  } catch (e) {
+    _demoStatus(`error: ${e.message}`, true);
+  }
+}
+
+async function saveDemoSummary() {
+  const { kind, key } = demoModalState;
+  if (!kind || !key) return;
+  const summary = _demoCurrent();
+  if (!summary.purpose && !summary.description && !summary.value && !summary.available_to) {
+    _demoStatus("nothing to save - fill in at least one section or click Generate", true);
+    return;
+  }
+  _demoStatus("saving…");
+  try {
+    const resp = await fetch("/api/ppr/demo-summary", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ kind, key, summary }),
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({ detail: resp.statusText }));
+      throw new Error(err.detail || resp.statusText);
+    }
+    _demoStatus("saved ✓");
+  } catch (e) {
+    _demoStatus(`error: ${e.message}`, true);
+  }
+}
+
+async function clearDemoSummary() {
+  const { kind, key } = demoModalState;
+  if (!kind || !key) return;
+  if (!confirm("Reset the saved demo summary?")) return;
+  try {
+    const resp = await fetch("/api/ppr/demo-summary", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ kind, key, summary: null }),
+    });
+    if (!resp.ok) throw new Error(resp.statusText);
+    ["demo-purpose", "demo-description", "demo-value", "demo-available-to"].forEach((id) => { $(id).value = ""; });
+    _demoStatus("reset");
+  } catch (e) {
+    _demoStatus(`error: ${e.message}`, true);
+  }
+}
+
+async function copyDemoSummary() {
+  const s = _demoCurrent();
+  const html = `<h2>Purpose</h2><p>${escapeHtml(s.purpose)}</p>`
+    + `<h2>Description</h2><p>${escapeHtml(s.description).replace(/\n\n/g, "</p><p>").replace(/\n/g, "<br>")}</p>`
+    + `<h2>Value</h2><p>${escapeHtml(s.value)}</p>`
+    + `<h2>Available to</h2><p>${escapeHtml(s.available_to)}</p>`;
+  const plain = `Purpose\n${s.purpose}\n\nDescription\n${s.description}\n\nValue\n${s.value}\n\nAvailable to\n${s.available_to}`;
+  try {
+    await copyRichAndPlain(html, plain);
+    _demoStatus("copied to clipboard ✓");
+  } catch (e) {
+    _demoStatus(`copy failed: ${e.message}`, true);
+  }
+}
+
+$("demo-summary-close").addEventListener("click", closeDemoModal);
+$("demo-cancel-btn").addEventListener("click", closeDemoModal);
+$("demo-generate-btn").addEventListener("click", generateDemoSummary);
+$("demo-save-btn").addEventListener("click", saveDemoSummary);
+$("demo-clear-btn").addEventListener("click", clearDemoSummary);
+$("demo-copy-btn").addEventListener("click", copyDemoSummary);
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !$("demo-summary-modal").classList.contains("hidden")) {
+    closeDemoModal();
   }
 });
 

@@ -1203,6 +1203,21 @@ body[data-auth="anon"] .epic-card[draggable] { -webkit-user-drag: none; }
   border-radius: var(--radius-s);
 }
 
+.demo-summary-card {
+  max-width: 720px;
+  width: 90vw;
+}
+.demo-summary-card textarea,
+.demo-summary-card input[type="text"] {
+  width: 100%;
+  font-family: var(--font-family);
+  font-size: var(--fs-body3);
+  padding: var(--sp-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-s);
+  resize: vertical;
+}
+
 #ppr-segment-filter .segment-toggle.active { outline: 2px solid var(--color-primary); outline-offset: 1px; }
 #ppr-segment-filter .segment-toggle { cursor: pointer; }
 .card-due {

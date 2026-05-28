@@ -260,7 +260,9 @@ def _ensure_schema(c: sqlite3.Connection) -> None:
     c.executescript(_SCHEMA)
     _add_column_if_missing(c, "ideas", "segments_json", "TEXT NOT NULL DEFAULT '[]'")
     _add_column_if_missing(c, "ideas", "ppr_summary", "TEXT")
+    _add_column_if_missing(c, "ideas", "demo_summary_json", "TEXT")
     _add_column_if_missing(c, "epic_metadata", "ppr_summary", "TEXT")
+    _add_column_if_missing(c, "epic_metadata", "demo_summary_json", "TEXT")
     _seed_app_config(c)
 
 

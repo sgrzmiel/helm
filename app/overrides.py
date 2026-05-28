@@ -269,6 +269,28 @@ def get_metadata(key: str) -> dict[str, Any]:
     return _backfill_metadata_docs(_row_to_meta_dict(row))
 
 
+def get_epic_demo_summary(key: str) -> Optional[dict]:
+    row = _qone("SELECT demo_summary_json FROM epic_metadata WHERE epic_key = ?", (key,))
+    if row is None or row["demo_summary_json"] is None:
+        return None
+    try:
+        return json.loads(row["demo_summary_json"])
+    except json.JSONDecodeError:
+        return None
+
+
+def set_epic_demo_summary(key: str, summary: Optional[dict]) -> Optional[dict]:
+    _ensure_metadata_row(key)
+    if summary is None:
+        _q("UPDATE epic_metadata SET demo_summary_json = NULL WHERE epic_key = ?", (key,))
+    else:
+        _q(
+            "UPDATE epic_metadata SET demo_summary_json = ? WHERE epic_key = ?",
+            (json.dumps(summary), key),
+        )
+    return get_epic_demo_summary(key)
+
+
 def _ensure_metadata_row(key: str) -> None:
     _q(
         """INSERT OR IGNORE INTO epic_metadata(epic_key, one_pager_url, stakeholder, idea_id, segments_json)
