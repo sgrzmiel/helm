@@ -24,9 +24,6 @@ from fastapi import Cookie, HTTPException, Response
 COOKIE_NAME = "pmtk_session"
 SESSION_TTL = timedelta(days=7)
 
-# token -> expires_at_iso
-_SESSIONS: dict[str, datetime] = {}
-
 
 def _password_configured() -> bool:
     return bool((os.environ.get("APP_PASSWORD") or "").strip())
@@ -37,10 +34,10 @@ def _now() -> datetime:
 
 
 def _prune() -> None:
-    now = _now()
-    expired = [t for t, exp in _SESSIONS.items() if exp < now]
-    for t in expired:
-        _SESSIONS.pop(t, None)
+    """Drop expired tokens from the sessions table. Cheap - runs on every
+    is_token_valid() call; the table is tiny (one row per active login)."""
+    from .db import _q  # local import: avoid module-load cycle
+    _q("DELETE FROM sessions WHERE expires_at < ?", (_now().isoformat(),))
 
 
 def is_open_mode() -> bool:
@@ -53,8 +50,10 @@ def is_token_valid(token: Optional[str]) -> bool:
         return True
     if not token:
         return False
+    from .db import _qone
     _prune()
-    return token in _SESSIONS
+    row = _qone("SELECT expires_at FROM sessions WHERE token = ?", (token,))
+    return row is not None
 
 
 def login(password: str, response: Response) -> bool:
@@ -65,8 +64,10 @@ def login(password: str, response: Response) -> bool:
     expected = (os.environ.get("APP_PASSWORD") or "").strip()
     if not secrets.compare_digest(password.strip(), expected):
         return False
+    from .db import _q
     token = secrets.token_urlsafe(32)
-    _SESSIONS[token] = _now() + SESSION_TTL
+    expires_at = (_now() + SESSION_TTL).isoformat()
+    _q("INSERT INTO sessions(token, expires_at) VALUES (?, ?)", (token, expires_at))
     response.set_cookie(
         key=COOKIE_NAME,
         value=token,
@@ -79,7 +80,8 @@ def login(password: str, response: Response) -> bool:
 
 def logout(token: Optional[str], response: Response) -> None:
     if token:
-        _SESSIONS.pop(token, None)
+        from .db import _q
+        _q("DELETE FROM sessions WHERE token = ?", (token,))
     response.delete_cookie(COOKIE_NAME)
 
 

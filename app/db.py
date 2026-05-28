@@ -263,6 +263,12 @@ def _ensure_schema(c: sqlite3.Connection) -> None:
     _add_column_if_missing(c, "ideas", "demo_summary_json", "TEXT")
     _add_column_if_missing(c, "epic_metadata", "ppr_summary", "TEXT")
     _add_column_if_missing(c, "epic_metadata", "demo_summary_json", "TEXT")
+    c.execute(
+        """CREATE TABLE IF NOT EXISTS sessions (
+            token       TEXT PRIMARY KEY,
+            expires_at  TEXT NOT NULL
+        )"""
+    )
     _seed_app_config(c)
 
 

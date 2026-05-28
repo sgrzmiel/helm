@@ -928,9 +928,48 @@ function renderDashboardLastSynced() {
   el.title = new Date(statusState.lastSynced).toLocaleString();
 }
 
+// localStorage key for the dashboard list snapshot. Hydrated on every load
+// of the Projects Dashboard page so the user sees the last-known state
+// immediately, before the network round-trip completes.
+const DASHBOARD_CACHE_KEY = "helm:dashboard-list:v1";
+
+function _saveDashboardCache(entries, lastSynced) {
+  try {
+    localStorage.setItem(DASHBOARD_CACHE_KEY, JSON.stringify({ entries, lastSynced, cachedAt: Date.now() }));
+  } catch { /* quota / private mode - non-fatal */ }
+}
+
+function _loadDashboardCache() {
+  try {
+    const raw = localStorage.getItem(DASHBOARD_CACHE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch { return null; }
+}
+
 async function loadStatusList(forceRefresh = false) {
   $("track-status").className = "status";
-  $("track-status").textContent = forceRefresh ? "refreshing from Jira…" : "loading…";
+
+  // Hydrate from localStorage immediately so the user sees something
+  // useful before the network call resolves. Only when we don't already
+  // have entries in state (page-switch case) and we're not force-refreshing.
+  if (!forceRefresh && statusState.entries.length === 0) {
+    const cached = _loadDashboardCache();
+    if (cached?.entries?.length) {
+      statusState.entries = cached.entries;
+      statusState.lastSynced = cached.lastSynced || null;
+      renderDashboardLastSynced();
+      renderStatusList();
+      $("track-status").textContent = "loading fresh state…";
+    } else {
+      $("track-status").textContent = "loading…";
+    }
+  } else if (forceRefresh) {
+    $("track-status").textContent = "refreshing from Jira…";
+  } else {
+    $("track-status").textContent = "loading…";
+  }
+
   try {
     // Fetch user email + atlassian domain from settings (lazy, once per session)
     if (!statusState.userEmail || !statusState.atlassianDomain) {
@@ -951,6 +990,7 @@ async function loadStatusList(forceRefresh = false) {
     const data = await resp.json();
     statusState.entries = data.entries || [];
     statusState.lastSynced = data.last_synced || null;
+    _saveDashboardCache(statusState.entries, statusState.lastSynced);
     // A manual refresh-all invalidates any pending background result.
     if (forceRefresh) statusState.pendingRefresh = null;
     renderDashboardLastSynced();
@@ -1060,6 +1100,7 @@ function applyPendingRefresh() {
   statusState.lastSynced = statusState.pendingRefresh.last_synced;
   statusState.pendingRefresh = null;
   document.getElementById("refresh-banner")?.remove();
+  _saveDashboardCache(statusState.entries, statusState.lastSynced);
   renderDashboardLastSynced();
   renderStatusList();
 }
@@ -1314,6 +1355,7 @@ async function trackEpic() {
     const data = await resp.json();
     statusState.entries = data.entries || [];
     statusState.lastSynced = data.last_synced || statusState.lastSynced;
+    _saveDashboardCache(statusState.entries, statusState.lastSynced);
     renderDashboardLastSynced();
     renderStatusList();
     $("track-key").value = "";
@@ -2702,6 +2744,7 @@ async function performLogout() {
     await fetch("/api/auth/logout", { method: "POST" });
   } catch {}
   statusState.authenticated = false;
+  try { localStorage.removeItem(DASHBOARD_CACHE_KEY); } catch {}
   applyAuthState();
   // Collapse any open detail since anon can't keep it visible.
   collapseDetail();
